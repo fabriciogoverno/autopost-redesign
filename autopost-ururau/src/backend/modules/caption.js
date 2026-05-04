@@ -212,17 +212,31 @@ ${summary}
 
 #Ururau #NoticiasRJ #CamposDosGoytacazes #${category}`;
 
-        const cta = `\n\n💬 O que você acha? Comente abaixo!`;
+        const cta = '
+
+💬 O que você acha? Comente abaixo!';
         const ctaShort = ' 💬 Comente!';
 
         return {
-            instagram: `${base}${cta}\n\n🔗 Leia mais: ${url}`,
-            facebook: `${base}${cta}\n\n🔗 ${url}`,
+            instagram: base + cta + '
+
+🔗 Leia mais: ' + url,
+            facebook: base + cta + '
+
+🔗 ' + url,
             twitter: (title + ctaShort).substring(0, 260) + ' #Ururau',
-            linkedin: `📰 ${title}\n\n${summary}\n\n#jornalismo #Ururau #RJ`,
+            linkedin: `📰 ${title}
+
+${summary}
+
+#jornalismo #Ururau #RJ`,
             threads: base.substring(0, 480) + '...',
             tiktok: title + ' #Ururau #NoticiasRJ #fyp',
-            whatsapp: `📰 *${title}*\n\n${summary}\n\n🔗 ${url}`
+            whatsapp: `📰 *${title}*
+
+${summary}
+
+🔗 ${url}`
         };
     }
 

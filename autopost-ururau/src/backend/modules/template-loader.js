@@ -4,7 +4,7 @@
  * Fase 2 — Gerador
  */
 
-import { readFileSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -69,6 +69,7 @@ function validateTemplate(template) {
  * @returns {Array} - Lista de {id, name, description}
  */
 export function listTemplates() {
+    const { readdirSync } = await import('fs');
     const files = readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json'));
 
     return files.map(f => {
@@ -160,4 +161,3 @@ export function wrapTitle(title, maxWidth, fontSize) {
 
     return lines;
 }
-

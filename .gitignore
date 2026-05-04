@@ -28,3 +28,9 @@ __pycache__/
 *.log
 .DS_Store
 Thumbs.db
+
+# arquivos locais gerados
+autopost-ururau/src/database/
+autopost-ururau/src/backend/**/*.bak
+autopost-ururau/src/backend/**/*.bak_*
+autopost-ururau/package-lock.json
