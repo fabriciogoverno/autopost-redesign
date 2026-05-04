@@ -1,0 +1,103 @@
+{
+  "name": "Ururau Reels Canva",
+  "version": "1.0.0",
+  "source": {
+    "type": "canva",
+    "designId": "DAHIBnrQXjM",
+    "width": 1080,
+    "height": 1920
+  },
+  "base": {
+    "image": "public/assets/template-base.png",
+    "locked": true,
+    "description": "PNG exportado do Canva. Contem logo ururau, 19 ANOS, icone U, overlay, watermark, badge fixo, linha decorativa. NAO EDITAR."
+  },
+  "lockedElements": [
+    "logo ururau",
+    "selo 19 anos",
+    "icone U",
+    "fundo base",
+    "gradiente principal",
+    "tamanho final 1080 x 1920"
+  ],
+  "categoryColors": {
+    "OPINIAO": "#e63946",
+    "POLITICA": "#1d3557",
+    "ESPORTE": "#2a9d8f",
+    "SEGURANCA": "#e9c46a",
+    "ECONOMIA": "#f4a261",
+    "GERAL": "#6c757d"
+  },
+  "layers": {
+    "category": {
+      "editable": true,
+      "label": "Badge Categoria",
+      "x": -479,
+      "y": 1076,
+      "fontSize": 22,
+      "fontWeight": "bold",
+      "fontFamily": "Aileron, Arial, Helvetica, sans-serif",
+      "color": "#FFFFFF",
+      "background": "{{categoryColor}}",
+      "radius": 6,
+      "paddingX": 24,
+      "paddingY": 14,
+      "height": 52,
+      "textTransform": "uppercase"
+    },
+    "title": {
+      "editable": true,
+      "label": "Titulo",
+      "x": 71,
+      "y": 1295,
+      "maxWidth": 970,
+      "fontFamily": "Aileron, Arial, Helvetica, sans-serif",
+      "fontSize": 83,
+      "fontWeight": "bold",
+      "lineHeight": 72,
+      "color": "#FFFFFF",
+      "maxCharsPerLine": 22,
+      "opacity": 1
+    },
+    "separator": {
+      "editable": true,
+      "label": "Linha Decorativa",
+      "x": -280,
+      "width": 220,
+      "height": 5,
+      "color": "#c11f25",
+      "radius": 2,
+      "marginTopAfterTitle": 18,
+      "y": 1281
+    },
+    "summary": {
+      "editable": true,
+      "label": "Subtitulo / Resumo",
+      "x": 67,
+      "fontSize": 56,
+      "lineHeight": 46,
+      "fontFamily": "Aileron, Arial, Helvetica, sans-serif",
+      "color": "#E0E0E0",
+      "maxCharsPerLine": 36,
+      "marginTopAfterLine": 35,
+      "y": 1651,
+      "opacity": 1
+    },
+    "watermark": {
+      "editable": true,
+      "label": "Watermark",
+      "x": 55,
+      "y": 1880,
+      "fontFamily": "Aileron, Arial, Helvetica, sans-serif",
+      "fontSize": 18,
+      "color": "#FFFFFF",
+      "opacity": 0.5,
+      "text": "URURAU.COM.BR"
+    }
+  },
+  "defaults": {
+    "category": "GERAL",
+    "title": "Titulo da noticia",
+    "summary": "Resumo da noticia"
+  }
+}

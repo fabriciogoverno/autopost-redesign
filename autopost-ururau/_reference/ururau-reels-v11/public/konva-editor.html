@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ururau Editor Visual</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/konva@9.3.18/konva.min.js"></script>
+  <style>
+    .editor-container { display: flex; gap: 20px; padding: 20px; height: calc(100vh - 80px); }
+    .canvas-area { flex: 1; display: flex; justify-content: center; align-items: center; background: #0a0a1a; border-radius: 12px; border: 1px solid #1a1a3a; overflow: auto; }
+    .canvas-area #konva-container { transform-origin: center; }
+    .toolbar { width: 320px; background: #111122; border: 1px solid #1a1a3a; border-radius: 12px; padding: 20px; overflow-y: auto; }
+    .toolbar h3 { font-size: 16px; margin-bottom: 16px; color: #E63946; text-transform: uppercase; letter-spacing: 1px; }
+    .tool-group { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #1a1a3a; }
+    .tool-group:last-child { border-bottom: none; }
+    .tool-group label { display: block; font-size: 12px; color: #a0a0b0; margin-bottom: 6px; font-weight: 600; }
+    .tool-group input, .tool-group select { width: 100%; padding: 10px; background: #0a0a1a; border: 1px solid #1a1a3a; border-radius: 8px; color: #fff; font-size: 14px; }
+    .tool-group input[type="color"] { height: 44px; padding: 4px; }
+    .tool-group input[type="range"] { padding: 0; height: 8px; }
+    .tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn-editor { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; margin-bottom: 8px; transition: all 0.2s; }
+    .btn-editor.primary { background: #E63946; color: #fff; }
+    .btn-editor.primary:hover { background: #c11f25; }
+    .btn-editor.secondary { background: transparent; color: #fff; border: 1px solid #1a1a3a; }
+    .btn-editor.secondary:hover { border-color: #E63946; color: #E63946; }
+    .element-list { display: flex; flex-direction: column; gap: 6px; }
+    .element-item { padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; align-items: center; border: 2px solid transparent; }
+    .element-item:hover { background: rgba(230,57,70,0.08); }
+    .element-item.active { border-color: #E63946; background: rgba(230,57,70,0.12); }
+    .element-type { font-size: 10px; color: #a0a0b0; text-transform: uppercase; }
+    .keyboard-hint { font-size: 11px; color: #666; margin-top: 12px; line-height: 1.5; }
+    .scale-control { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .scale-control span { font-size: 12px; color: #a0a0b0; }
+    .scale-control input { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <nav class="sidebar">
+      <div class="logo">
+        <span class="logo-text">ururau</span>
+        <span class="logo-badge">19 ANOS</span>
+      </div>
+      <ul class="menu">
+        <li data-page="dashboard"><span class="icon">&#128202;</span> Dashboard</li>
+        <li data-page="new"><span class="icon">&#10133;</span> Nova Reels</li>
+        <li data-page="calendar"><span class="icon">&#128197;</span> Calendario</li>
+        <li data-page="logs"><span class="icon">&#128203;</span> Logs</li>
+        <li class="active" data-page="editor"><span class="icon">&#127912;</span> Editor Visual</li>
+        <li data-page="template"><span class="icon">&#9881;</span> Template JSON</li>
+        <li data-page="config"><span class="icon">&#9881;</span> Config</li>
+      </ul>
+    </nav>
+
+    <main class="main">
+      <div class="hero-small">
+        <h1>Editor Visual de Template</h1>
+        <p>Arraste elementos com o mouse, edite texto com double-click, ajuste propriedades na toolbar.</p>
+      </div>
+
+      <div class="editor-container">
+        <div class="canvas-area">
+          <div id="konva-container"></div>
+        </div>
+
+        <div class="toolbar">
+          <div class="scale-control">
+            <span>Zoom</span>
+            <input type="range" id="scaleSlider" min="0.2" max="1.0" step="0.05" value="0.45">
+            <span id="scaleValue">45%</span>
+          </div>
+
+          <h3>Elementos</h3>
+          <div class="element-list" id="elementList"></div>
+
+          <h3 style="margin-top:20px">Propriedades</h3>
+          <div id="propertiesPanel">
+            <p style="color:#666;font-size:13px">Selecione um elemento no canvas para editar.</p>
+          </div>
+
+          <div style="margin-top:20px">
+            <button class="btn-editor primary" onclick="saveFromEditor()">Salvar Posicoes</button>
+            <button class="btn-editor secondary" onclick="generatePreviewFromEditor()">Gerar Preview PNG</button>
+            <button class="btn-editor secondary" onclick="resetPositions()">Restaurar Padrao</button>
+          </div>
+
+          <div class="keyboard-hint">
+            <strong>Atalhos:</strong><br>
+            Setas = mover 1px<br>
+            Shift+Setas = mover 10px<br>
+            Delete = remover (nao bloqueados)<br>
+            Ctrl+Z = desfazer (em breve)
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="konva-editor.js"></script>
+</body>
+</html>

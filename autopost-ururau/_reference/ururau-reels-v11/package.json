@@ -1,0 +1,25 @@
+{
+  "name": "ururau-reels",
+  "version": "1.0.0",
+  "description": "Autopost gratuito para Instagram Reels do portal Ururau",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "init-db": "node src/db.js --init",
+    "test": "node src/test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "sharp": "^0.33.4",
+    "puppeteer": "^22.12.1",
+    "node-cron": "^3.0.3",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "commander": "^12.1.0",
+    "cheerio": "^1.0.0-rc.12",
+    "konva": "^9.3.18"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

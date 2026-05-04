@@ -12,8 +12,7 @@
  *   - Reconexão automática
  */
 
-import whatsappWeb from 'whatsapp-web.js';
-const { Client, LocalAuth, MessageMedia } = whatsappWeb;
+import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import { writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -325,4 +324,3 @@ function logDebug(msg) {
         console.log(`[${new Date().toLocaleString('pt-BR')}] 🔍 DEBUG: ${msg}`);
     }
 }
-

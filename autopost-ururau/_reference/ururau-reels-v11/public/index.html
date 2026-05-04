@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ururau Reels — Transforme noticias em Reels para Instagram</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+      <div class="logo">
+        <span class="logo-text">ururau</span>
+        <span class="logo-badge">19 ANOS</span>
+      </div>
+      <ul class="menu">
+        <li class="active" data-page="dashboard"><span class="icon">&#128202;</span> Dashboard</li>
+        <li data-page="new"><span class="icon">&#10133;</span> Nova Reels</li>
+        <li data-page="calendar"><span class="icon">&#128197;</span> Calendario</li>
+        <li data-page="logs"><span class="icon">&#128203;</span> Logs</li>
+        <li data-page="editor"><span class="icon">&#127912;</span> <a href="konva-editor.html" style="color:inherit;text-decoration:none">Editor Visual</a></li>
+        <li data-page="template"><span class="icon">&#9881;</span> Template JSON</li>
+        <li data-page="config"><span class="icon">&#9881;</span> Config</li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="status-indicator" id="statusIndicator"></div>
+        <span id="statusText">Autoblog: OFF</span>
+      </div>
+    </nav>
+
+    <main class="main">
+      <!-- DASHBOARD -->
+      <section id="page-dashboard" class="page active">
+        <!-- HERO -->
+        <div class="hero">
+          <h1>Transforme noticias em Reels para Instagram</h1>
+          <p class="hero-sub">Automatize toda criacao de conteudo e publique diretamente no Instagram</p>
+          <div class="hero-badges">
+            <span class="badge">Integracao em 5 minutos</span>
+            <span class="badge">Instagram Reels</span>
+            <span class="badge">Usado pelo portal Ururau ha 19 anos</span>
+          </div>
+          <button class="btn-hero" onclick="navigate('new')">Criar Reels Agora</button>
+        </div>
+
+        <!-- COMO FUNCIONA -->
+        <div class="section-title">
+          <h2>Como o Ururau funciona?</h2>
+          <p>Tres passos simples para automatizar sua presenca no Instagram</p>
+        </div>
+        <div class="steps-grid">
+          <div class="step-card">
+            <div class="step-icon">&#128279;</div>
+            <h3>Integracao Total</h3>
+            <p>Conectamos com qualquer site de noticias. WordPress, portais customizados, qualquer CMS.</p>
+          </div>
+          <div class="step-card">
+            <div class="step-icon">&#127912;</div>
+            <h3>Templates Profissionais</h3>
+            <p>Padrao visual do portal Ururau. Formatos para Reels prontos com sua identidade visual.</p>
+          </div>
+          <div class="step-card">
+            <div class="step-icon">&#128640;</div>
+            <h3>Publicacao Automatica</h3>
+            <p>Instagram Reels. Uma arte, um clique. Publicacao direta no seu perfil.</p>
+          </div>
+        </div>
+
+        <!-- COMPARACAO -->
+        <div class="section-title">
+          <h2>Sem tempo? Fazemos tudo por voce</h2>
+          <p>Seu portal publicando no Instagram no piloto automatico</p>
+        </div>
+        <div class="compare-grid">
+          <div class="compare-card">
+            <h3>Sem Ururau</h3>
+            <ul>
+              <li class="no">Mais de 10 minutos para criar as artes</li>
+              <li class="no">Depender de designer ou fazer no Canva</li>
+              <li class="no">Copiar e colar texto noticia por noticia</li>
+              <li class="no">Parar no fim de semana e feriados</li>
+              <li class="no">Escrever legendas manualmente</li>
+            </ul>
+          </div>
+          <div class="compare-card highlight">
+            <h3>Com Ururau</h3>
+            <ul>
+              <li class="yes">Reels e legenda em menos de 10 segundos</li>
+              <li class="yes">Templates profissionais com sua identidade visual</li>
+              <li class="yes">Integracao direta com seu site</li>
+              <li class="yes">Autoblog funcionando 24/7</li>
+              <li class="yes">Legendas com hashtags geradas automaticamente</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- SIMULADOR -->
+        <div class="simulator">
+          <h2>Quanto tempo voce economiza?</h2>
+          <p>Arraste o slider e veja o impacto no seu dia a dia</p>
+          <div class="sim-input">
+            <label>Quantas noticias voce publica por dia?</label>
+            <input type="range" id="simSlider" min="1" max="50" value="10" oninput="updateSimulator()">
+            <span id="simValue">10</span> <span class="sim-unit">por dia</span>
+          </div>
+          <div class="sim-results">
+            <div class="sim-result">
+              <span class="sim-number" id="simDay">1h40m</span>
+              <span class="sim-label">economizadas por dia</span>
+            </div>
+            <div class="sim-result">
+              <span class="sim-number" id="simMonth">50h</span>
+              <span class="sim-label">economizadas por mes</span>
+            </div>
+            <div class="sim-result">
+              <span class="sim-number" id="simYear">600h</span>
+              <span class="sim-label">economizadas por ano</span>
+            </div>
+          </div>
+          <p class="sim-note">Calculo baseado em ~10 min por arte manual vs ~10 seg com Ururau</p>
+        </div>
+
+        <!-- FERRAMENTAS -->
+        <div class="section-title">
+          <h2>Ferramentas para crescer seu portal</h2>
+          <p>Tudo que voce precisa para automatizar sua presenca digital</p>
+        </div>
+        <div class="tools-grid">
+          <div class="tool-card">
+            <div class="tool-icon">&#128240;</div>
+            <h4>Extracao com IA</h4>
+            <p>Nossa IA identifica titulo, imagem e conteudo automaticamente.</p>
+          </div>
+          <div class="tool-card">
+            <div class="tool-icon">&#127912;</div>
+            <h4>Templates Prontos</h4>
+            <p>Template profissional no padrao do portal Ururau para Reels.</p>
+          </div>
+          <div class="tool-card">
+            <div class="tool-icon">&#128247;</div>
+            <h4>Multi-formato</h4>
+            <p>Reels 9:16 otimizado para engajamento maximo no Instagram.</p>
+          </div>
+          <div class="tool-card">
+            <div class="tool-icon">&#129302;</div>
+            <h4>Autoblog</h4>
+            <p>Publicacao automatica 24/7 sem intervencao manual.</p>
+          </div>
+          <div class="tool-card">
+            <div class="tool-icon">&#9201;</div>
+            <h4>Agendamento</h4>
+            <p>Programe posts para o melhor horario de engajamento.</p>
+          </div>
+          <div class="tool-card">
+            <div class="tool-icon">&#128172;</div>
+            <h4>Legendas com IA</h4>
+            <p>Legendas e hashtags geradas automaticamente pelo Gemini.</p>
+          </div>
+        </div>
+
+        <!-- STATS -->
+        <div class="section-title">
+          <h2>Estatisticas</h2>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value" id="statToday">0</div>
+            <div class="stat-label">Hoje</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statWeek">0</div>
+            <div class="stat-label">Semana</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statTotal">0</div>
+            <div class="stat-label">Total</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statPending">0</div>
+            <div class="stat-label">Pendentes</div>
+          </div>
+          <div class="stat-card success">
+            <div class="stat-value" id="statPublished">0</div>
+            <div class="stat-label">Publicados</div>
+          </div>
+          <div class="stat-card error">
+            <div class="stat-value" id="statErrors">0</div>
+            <div class="stat-label">Erros</div>
+          </div>
+        </div>
+
+        <!-- ULTIMAS PUBLICACOES -->
+        <div class="section-title">
+          <h2>Ultimas Publicacoes</h2>
+        </div>
+        <div class="posts-list" id="postsList"></div>
+      </section>
+
+      <!-- NOVA REELS -->
+      <section id="page-new" class="page">
+        <div class="hero-small">
+          <h1>Nova Reels</h1>
+          <p>Crie uma nova publicacao para o Instagram Reels</p>
+        </div>
+        <div class="form-container">
+          <div class="form-group">
+            <label>URL da Noticia</label>
+            <input type="url" id="inputUrl" placeholder="https://...">
+            <button class="btn-secondary" onclick="scrapeUrl()" style="margin-top:8px">Extrair Dados</button>
+          </div>
+          <div class="form-group">
+            <label>Titulo *</label>
+            <input type="text" id="inputTitle" placeholder="Titulo da noticia">
+          </div>
+          <div class="form-group">
+            <label>Resumo</label>
+            <textarea id="inputSummary" rows="3" placeholder="Resumo da noticia"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Categoria</label>
+              <select id="inputCategory">
+                <option value="GERAL">GERAL</option>
+                <option value="OPINIAO">OPINIAO</option>
+                <option value="POLITICA">POLITICA</option>
+                <option value="ESPORTE">ESPORTE</option>
+                <option value="SEGURANCA">SEGURANCA</option>
+                <option value="ECONOMIA">ECONOMIA</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>URL da Imagem</label>
+              <input type="url" id="inputImage" placeholder="https://...imagem.jpg">
+            </div>
+          </div>
+          <div class="preview-section">
+            <h3>Preview da Arte</h3>
+            <div class="preview-container-large">
+              <img id="previewImage" src="" alt="Preview" style="display:none;">
+              <div class="preview-placeholder" id="previewPlaceholder">Preencha os dados e clique em Gerar Preview</div>
+            </div>
+          </div>
+          <div class="preview-section">
+            <h3>Preview da Legenda</h3>
+            <div class="caption-preview" id="captionPreview">Legenda sera gerada automaticamente...</div>
+          </div>
+          <div class="actions">
+            <button class="btn-secondary" onclick="generatePreview()">Gerar Preview</button>
+            <button class="btn-primary" onclick="createPost()">Criar e Publicar</button>
+            <button class="btn-secondary" onclick="createAndSchedule()">Agendar</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CALENDARIO -->
+      <section id="page-calendar" class="page">
+        <div class="hero-small">
+          <h1>Calendario</h1>
+          <p>Visualize e gerencie suas publicacoes agendadas</p>
+        </div>
+        <div class="calendar-container" id="calendarContainer">
+          <div class="calendar-header">
+            <button onclick="changeMonth(-1)">&lt;</button>
+            <h2 id="calendarMonth">Maio 2026</h2>
+            <button onclick="changeMonth(1)">&gt;</button>
+          </div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </div>
+      </section>
+
+      <!-- LOGS -->
+      <section id="page-logs" class="page">
+        <div class="hero-small">
+          <h1>Logs</h1>
+          <p>Historico de execucao do sistema</p>
+        </div>
+        <div class="logs-container" id="logsContainer"></div>
+      </section>
+
+      <!-- CONFIG -->
+      
+            <section id="page-template" class="page">
+        <div class="hero-small">
+          <h1>Editor de Template</h1>
+          <p>Edite posicoes, cores, fontes e tamanhos das camadas dinamicas. A arte base do Canva permanece bloqueada.</p>
+        </div>
+        <div class="template-editor">
+          <div class="template-preview">
+            <h3>Preview do Template</h3>
+            <div class="preview-container-large">
+              <img id="templatePreviewImg" src="" alt="Preview" style="display:none;">
+              <div class="preview-placeholder" id="templatePreviewPlaceholder">Clique em "Gerar Preview" para visualizar</div>
+            </div>
+            <div class="template-actions">
+              <button class="btn-secondary" onclick="generateTemplatePreview()">Gerar Preview</button>
+              <button class="btn-primary" onclick="saveTemplate()">Salvar Template</button>
+              <button class="btn-secondary" onclick="resetTemplate()">Restaurar Padrao</button>
+            </div>
+          </div>
+          <div class="template-fields">
+            <h3>Camadas Editaveis</h3>
+
+            <div class="locked-notice">
+              <strong>Elementos bloqueados (arte base do Canva):</strong>
+              <span>logo ururau, selo 19 anos, icone U, fundo base, gradiente principal, tamanho 1080x1920</span>
+            </div>
+
+            <div class="layer-group">
+              <h4>Badge Categoria</h4>
+              <div class="form-row">
+                <div class="form-group"><label>X</label><input type="number" id="tplCatX" value="55"></div>
+                <div class="form-group"><label>Y</label><input type="number" id="tplCatY" value="1040"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Fonte (px)</label><input type="number" id="tplCatFontSize" value="22"></div>
+                <div class="form-group"><label>Altura</label><input type="number" id="tplCatHeight" value="52"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Padding X</label><input type="number" id="tplCatPaddingX" value="24"></div>
+                <div class="form-group"><label>Radius</label><input type="number" id="tplCatRadius" value="6"></div>
+              </div>
+            </div>
+
+            <div class="layer-group">
+              <h4>Titulo</h4>
+              <div class="form-row">
+                <div class="form-group"><label>X</label><input type="number" id="tplTitleX" value="55"></div>
+                <div class="form-group"><label>Y</label><input type="number" id="tplTitleY" value="1110"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Fonte (px)</label><input type="number" id="tplTitleFontSize" value="61"></div>
+                <div class="form-group"><label>Line Height</label><input type="number" id="tplTitleLineHeight" value="72"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Max Chars/Linha</label><input type="number" id="tplTitleMaxChars" value="22"></div>
+                <div class="form-group"><label>Max Width</label><input type="number" id="tplTitleMaxWidth" value="970"></div>
+              </div>
+            </div>
+
+            <div class="layer-group">
+              <h4>Linha Decorativa</h4>
+              <div class="form-row">
+                <div class="form-group"><label>X</label><input type="number" id="tplSepX" value="55"></div>
+                <div class="form-group"><label>Largura</label><input type="number" id="tplSepWidth" value="220"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Altura</label><input type="number" id="tplSepHeight" value="5"></div>
+                <div class="form-group"><label>Margin Top</label><input type="number" id="tplSepMarginTop" value="18"></div>
+              </div>
+              <div class="form-group">
+                <label>Cor</label>
+                <input type="color" id="tplSepColor" value="#C11F25">
+              </div>
+            </div>
+
+            <div class="layer-group">
+              <h4>Subtitulo</h4>
+              <div class="form-row">
+                <div class="form-group"><label>X</label><input type="number" id="tplSumX" value="55"></div>
+                <div class="form-group"><label>Fonte (px)</label><input type="number" id="tplSumFontSize" value="32"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Line Height</label><input type="number" id="tplSumLineHeight" value="46"></div>
+                <div class="form-group"><label>Max Chars/Linha</label><input type="number" id="tplSumMaxChars" value="36"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Margin Top</label><input type="number" id="tplSumMarginTop" value="28"></div>
+              </div>
+            </div>
+
+            <div class="layer-group">
+              <h4>Watermark</h4>
+              <div class="form-row">
+                <div class="form-group"><label>X</label><input type="number" id="tplWmX" value="55"></div>
+                <div class="form-group"><label>Y</label><input type="number" id="tplWmY" value="1880"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Fonte (px)</label><input type="number" id="tplWmFontSize" value="18"></div>
+                <div class="form-group"><label>Opacidade</label><input type="number" id="tplWmOpacity" value="0.5" step="0.1" min="0" max="1"></div>
+              </div>
+            </div>
+
+            <div class="layer-group">
+              <h4>Cores das Categorias</h4>
+              <div class="form-row">
+                <div class="form-group"><label>OPINIAO</label><input type="color" id="tplColorOpiniao" value="#E63946"></div>
+                <div class="form-group"><label>POLITICA</label><input type="color" id="tplColorPolitica" value="#1D3557"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>ESPORTE</label><input type="color" id="tplColorEsporte" value="#2A9D8F"></div>
+                <div class="form-group"><label>SEGURANCA</label><input type="color" id="tplColorSeguranca" value="#E9C46A"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>ECONOMIA</label><input type="color" id="tplColorEconomia" value="#F4A261"></div>
+                <div class="form-group"><label>GERAL</label><input type="color" id="tplColorGeral" value="#6C757D"></div>
+              </div>
+            </div>
+
+            <div class="layer-group">
+              <h4>Backups</h4>
+              <div id="backupsList" class="backups-list">Carregando backups...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+<section id="page-config" class="page">
+        <div class="hero-small">
+          <h1>Configuracoes</h1>
+          <p>Configure suas credenciais e preferencias</p>
+        </div>
+        <div class="form-container">
+          <div class="form-group">
+            <label>Gemini API Key</label>
+            <input type="password" id="configGeminiKey" placeholder="AIza...">
+          </div>
+          <div class="form-group">
+            <label>Instagram Username</label>
+            <input type="text" id="configIgUser" placeholder="seu_usuario">
+          </div>
+          <div class="form-group">
+            <label>Instagram Password</label>
+            <input type="password" id="configIgPass" placeholder="sua_senha">
+          </div>
+          <div class="form-group">
+            <label>Horarios Autoblog (virgula)</label>
+            <input type="text" id="configTimes" value="07:00,09:00,12:00,15:00,18:00,21:00">
+          </div>
+          <div class="form-group checkbox">
+            <label>
+              <input type="checkbox" id="configAutoblog"> Ativar Autoblog 24/7
+            </label>
+          </div>
+          <button class="btn-primary" onclick="saveConfig()">Salvar Configuracoes</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal()">&times;</span>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

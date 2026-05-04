@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ururau Editor — Templates Reels</title>
+    <link rel="stylesheet" href="/editor/css/editor.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <style>
+        @font-face {
+            font-family: 'Aileron';
+            src: local('Aileron'), local('Aileron Bold');
+            font-weight: 400 700;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- TOOLBAR -->
+        <header id="toolbar">
+            <div class="toolbar-left">
+                <span class="logo">URURAU <small>EDITOR v8</small></span>
+            </div>
+            <div class="toolbar-center">
+                <button id="btn-add-text" title="Adicionar Texto (T)">📝 Texto</button>
+                <button id="btn-add-image" title="Adicionar Imagem">🖼️ Imagem</button>
+                <button id="btn-add-rect" title="Adicionar Retângulo">⬛ Retângulo</button>
+                <button id="btn-add-circle" title="Adicionar Círculo">🔴 Círculo</button>
+                <div class="sep"></div>
+                <button id="btn-delete" title="Deletar (Del)">🗑️ Deletar</button>
+                <button id="btn-duplicate" title="Duplicar (Ctrl+D)">📋 Duplicar</button>
+                <div class="sep"></div>
+                <button id="btn-undo" title="Desfazer (Ctrl+Z)">↩️ Undo</button>
+                <button id="btn-redo" title="Refazer (Ctrl+Y)">↪️ Redo</button>
+                <div class="sep"></div>
+                <button id="btn-bring-forward" title="Trazer para Frente">⬆️ Frente</button>
+                <button id="btn-send-backward" title="Enviar para Trás">⬇️ Trás</button>
+                <div class="sep"></div>
+                <button id="btn-group" title="Agrupar (Ctrl+G)">🔗 Agrupar</button>
+                <button id="btn-ungroup" title="Desagrupar (Ctrl+Shift+G)">🔓 Desagrupar</button>
+            </div>
+            <div class="toolbar-right">
+                <button id="btn-zoom-in" title="Zoom In">🔍+</button>
+                <button id="btn-zoom-out" title="Zoom Out">🔍-</button>
+                <button id="btn-zoom-reset" title="Reset Zoom">⌖</button>
+                <div class="sep"></div>
+                <button id="btn-save" class="btn-primary" title="Salvar Template">💾 Salvar</button>
+                <button id="btn-load" title="Carregar Template">📂 Carregar</button>
+                <button id="btn-preview" class="btn-accent" title="Gerar Preview">👁️ Preview</button>
+            </div>
+        </header>
+
+        <!-- MAIN AREA -->
+        <div id="main-area">
+            <!-- LEFT SIDEBAR: LAYERS -->
+            <aside id="layers-panel" class="sidebar">
+                <div class="panel-header">
+                    <span>📑 Camadas</span>
+                    <small id="layer-count">0 objetos</small>
+                </div>
+                <div id="layers-list" class="panel-content">
+                    <div class="empty-state">Nenhum objeto no canvas</div>
+                </div>
+            </aside>
+
+            <!-- CANVAS AREA -->
+            <div id="canvas-wrapper">
+                <div id="canvas-container">
+                    <canvas id="c"></canvas>
+                </div>
+                <div id="canvas-info">
+                    <span id="canvas-size">1080 × 1920</span>
+                    <span id="canvas-zoom">Zoom: 100%</span>
+                    <span id="selected-info">Nada selecionado</span>
+                </div>
+            </div>
+
+            <!-- RIGHT SIDEBAR: PROPERTIES -->
+            <aside id="props-panel" class="sidebar">
+                <div class="panel-header">
+                    <span>⚙️ Propriedades</span>
+                </div>
+                <div id="props-content" class="panel-content">
+                    <div class="empty-state">Selecione um objeto para editar</div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- CONTEXT MENU -->
+        <div id="context-menu" class="hidden">
+            <div data-action="duplicate">📋 Duplicar</div>
+            <div data-action="bring-to-front">⤒ Trazer ao Topo</div>
+            <div data-action="send-to-back">⤓ Enviar ao Fundo</div>
+            <div class="menu-sep"></div>
+            <div data-action="lock">🔒 Bloquear</div>
+            <div data-action="hide">👁️‍🗨️ Ocultar</div>
+            <div class="menu-sep"></div>
+            <div data-action="delete" class="danger">🗑️ Deletar</div>
+        </div>
+
+        <!-- SAVE MODAL -->
+        <div id="modal-save" class="modal hidden">
+            <div class="modal-content">
+                <h3>💾 Salvar Template</h3>
+                <input type="text" id="save-name" placeholder="Nome do template (ex: ururau-base-v1)">
+                <div class="modal-actions">
+                    <button id="modal-save-confirm" class="btn-primary">Salvar</button>
+                    <button id="modal-save-cancel">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LOAD MODAL -->
+        <div id="modal-load" class="modal hidden">
+            <div class="modal-content">
+                <h3>📂 Carregar Template</h3>
+                <div id="templates-list" class="templates-grid"></div>
+                <div class="modal-actions">
+                    <button id="modal-load-cancel">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PREVIEW MODAL -->
+        <div id="modal-preview" class="modal hidden">
+            <div class="modal-content modal-large">
+                <h3>👁️ Preview Final</h3>
+                <img id="preview-img" src="" alt="Preview">
+                <div class="modal-actions">
+                    <button id="modal-preview-close" class="btn-primary">Fechar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TOAST -->
+        <div id="toast" class="hidden"></div>
+    </div>
+
+    <!-- Fabric.js v5.3.0 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+    <script src="/editor/js/history-manager.js"></script>
+    <script src="/editor/js/keyboard.js"></script>
+    <script src="/editor/js/context-menu.js"></script>
+    <script src="/editor/js/templates.js"></script>
+    <script src="/editor/js/layers-panel.js"></script>
+    <script src="/editor/js/props-panel.js"></script>
+    <script src="/editor/js/toolbar.js"></script>
+    <script src="/editor/js/fabric-editor.js"></script>
+    <script src="/editor/js/editor.js"></script>
+</body>
+</html>
