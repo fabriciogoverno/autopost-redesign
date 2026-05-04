@@ -212,18 +212,12 @@ ${summary}
 
 #Ururau #NoticiasRJ #CamposDosGoytacazes #${category}`;
 
-        const cta = '
-
-💬 O que você acha? Comente abaixo!';
+        const cta = '\n\n💬 O que você acha? Comente abaixo!';
         const ctaShort = ' 💬 Comente!';
 
         return {
-            instagram: base + cta + '
-
-🔗 Leia mais: ' + url,
-            facebook: base + cta + '
-
-🔗 ' + url,
+            instagram: base + cta + '\n\n🔗 Leia mais: ' + url,
+            facebook: base + cta + '\n\n🔗 ' + url,
             twitter: (title + ctaShort).substring(0, 260) + ' #Ururau',
             linkedin: `📰 ${title}
 

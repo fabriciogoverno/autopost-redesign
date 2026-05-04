@@ -10,7 +10,7 @@ import sharp from 'sharp';
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { loadTemplate, fillTemplate, wrapTitle } from './template-loader.js';
+import { loadTemplate, fillTemplate, wrapTitle, getTemplateBasePath, getTemplateHash } from './template-loader.js';
 import { logInfo, logSuccess, logError, logDebug } from './logger.js';
 import database from '../core/database.js';
 
@@ -43,9 +43,10 @@ class ArtGenerator {
 
             const template = loadTemplate(templateId);
             const filled = fillTemplate(template, post);
+            const templateHash = getTemplateHash(template);
 
             for (const format of formats) {
-                const filePath = await this.renderFormat(filled, post, format, templateId);
+                const filePath = await this.renderFromTemplate(filled, post, format, templateId);
                 files.push({ format, path: filePath });
             }
 
@@ -59,7 +60,7 @@ class ArtGenerator {
 
             logSuccess(`✅ Arte gerada em ${duration}ms: ${files.map(f => f.format).join(', ')}`);
 
-            return { success: true, files, duration, template: templateId };
+            return { success: true, files, duration, template: templateId, templateHash };
 
         } catch (err) {
             this.stats.failed++;
@@ -69,6 +70,11 @@ class ArtGenerator {
             }
             return { success: false, error: err.message, files: [] };
         }
+    }
+
+    async renderFromTemplate(template, post, format, templateId) {
+        if (template.layers) return this.renderLayerTemplate(template, post, format, templateId);
+        return this.renderFormat(template, post, format, templateId);
     }
 
     /**
@@ -321,6 +327,54 @@ class ArtGenerator {
 
         return { r: 255, g: 255, b: 255, a: 255 };
     }
+
+    async renderLayerTemplate(template, post, format) {
+        const width = template.source.width;
+        const height = template.source.height;
+        const outDir = join(OUTPUT_DIR, new Date().toISOString().slice(0, 10));
+        if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+        const hash = post.hash || 'preview';
+        const filePath = join(outDir, `${hash.substring(0, 12)}_${format}.png`);
+        const data = template._renderData || {};
+        const category = (data.category || 'GERAL').toUpperCase();
+        const color = template.categoryColors?.[category] || template.categoryColors?.GERAL || '#6c757d';
+        const l = template.layers || {};
+        const titleLines = this.wrapMultiline(data.title || '', l.title?.maxWidth || 970, l.title?.fontSize || 60, 4);
+        const summaryLines = this.wrapMultiline(data.summary || '', l.summary?.maxWidth || 970, l.summary?.fontSize || 32, 5);
+        const titleText = titleLines.map((line, i) => `<tspan x="${l.title?.x || 55}" dy="${i === 0 ? 0 : (l.title?.lineHeight || 72)}">${this.escapeXml(line)}</tspan>`).join('');
+        const summaryText = summaryLines.map((line, i) => `<tspan x="${l.summary?.x || 55}" dy="${i === 0 ? 0 : (l.summary?.lineHeight || 46)}">${this.escapeXml(line)}</tspan>`).join('');
+        const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+          <rect x="${l.category?.x || 55}" y="${l.category?.y || 1100}" width="${Math.max(150, category.length * 18 + (l.category?.paddingX || 24) * 2)}" height="${l.category?.height || 52}" rx="${l.category?.radius || 6}" fill="${color}"/>
+          <text x="${(l.category?.x || 55) + (l.category?.paddingX || 24)}" y="${(l.category?.y || 1100) + (l.category?.fontSize || 22)}" font-size="${l.category?.fontSize || 22}" fill="${l.category?.color || '#fff'}" font-family="Arial" font-weight="bold">${category}</text>
+          <text x="${l.title?.x || 55}" y="${l.title?.y || 1180}" font-size="${l.title?.fontSize || 60}" fill="${l.title?.color || '#fff'}" font-family="Arial" font-weight="bold">${titleText}</text>
+          <rect x="${l.separator?.x || 55}" y="${l.separator?.y || ((l.title?.y || 1180) + 80)}" width="${l.separator?.width || 220}" height="${l.separator?.height || 5}" fill="${l.separator?.color || '#c11f25'}"/>
+          <text x="${l.summary?.x || 55}" y="${l.summary?.y || 1400}" font-size="${l.summary?.fontSize || 32}" fill="${l.summary?.color || '#E0E0E0'}" font-family="Arial">${summaryText}</text>
+          <text x="${l.watermark?.x || 55}" y="${l.watermark?.y || 1880}" font-size="${l.watermark?.fontSize || 18}" fill="${l.watermark?.color || '#fff'}" opacity="${l.watermark?.opacity || 0.5}" font-family="Arial">${this.escapeXml(l.watermark?.text || 'URURAU.COM.BR')}</text>
+        </svg>`;
+        const basePath = getTemplateBasePath();
+        const base = existsSync(basePath)
+            ? await sharp(basePath).resize(width, height).toBuffer()
+            : await sharp({ create: { width, height, channels: 4, background: '#050510' } }).png().toBuffer();
+        await sharp(base).composite([{ input: Buffer.from(svg) }]).png({ quality: 95 }).toFile(filePath);
+        return filePath;
+    }
+
+    wrapMultiline(text, maxWidth, fontSize, maxLines = 4) {
+        const chars = Math.max(8, Math.floor((maxWidth || 970) / Math.max(10, fontSize * 0.56)));
+        const words = String(text || '').split(/\s+/);
+        const lines = [];
+        let cur = '';
+        for (const w of words) {
+            const t = (cur + ' ' + w).trim();
+            if (t.length <= chars) cur = t;
+            else { if (cur) lines.push(cur); cur = w; }
+            if (lines.length >= maxLines) break;
+        }
+        if (cur && lines.length < maxLines) lines.push(cur);
+        return lines;
+    }
+
+    escapeXml(v = '') { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
     getStats() {
         return { ...this.stats };

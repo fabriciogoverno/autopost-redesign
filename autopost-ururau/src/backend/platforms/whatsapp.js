@@ -12,7 +12,7 @@
  *   - Reconexão automática
  */
 
-import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
+import whatsappPkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import { writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -22,6 +22,7 @@ import database from '../core/database.js';
 
 const QR_PATH = join(process.cwd(), 'output', 'screenshots', 'whatsapp-qr.png');
 const SESSION_PATH = join(process.cwd(), '.wwebjs_auth');
+const { Client, LocalAuth, MessageMedia } = whatsappPkg;
 
 class WhatsAppPublisher {
     constructor() {

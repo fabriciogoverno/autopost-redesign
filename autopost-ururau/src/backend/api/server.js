@@ -9,6 +9,8 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { join, resolve } from 'path';
+import { readFile } from 'fs/promises';
 import database from '../core/database.js';
 import publisher from '../modules/publisher.js';
 import generator from '../modules/generator.js';
@@ -17,6 +19,7 @@ import autoblog from '../modules/autoblog.js';
 import scheduler from '../modules/scheduler.js';
 import rollback from '../modules/rollback.js';
 import { logInfo, logSuccess, logError } from '../modules/logger.js';
+import { loadActiveTemplate, saveActiveTemplate, resetActiveTemplate, listTemplateBackups, restoreTemplateBackup } from '../modules/template-loader.js';
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
@@ -309,6 +312,66 @@ app.get('/api/templates', async (req, res) => {
   }
 });
 
+app.get('/api/media', async (req, res) => {
+  try {
+    const mediaPath = req.query.path;
+    if (!mediaPath) return res.status(400).json({ error: 'path obrigatório' });
+    const allowedRoots = [resolve(process.cwd(), 'output', 'artes'), resolve(process.cwd(), 'output', 'preview')];
+    const absolutePath = resolve(mediaPath);
+    const isAllowed = allowedRoots.some(root => absolutePath.startsWith(root));
+    if (!isAllowed) return res.status(403).json({ error: 'Acesso negado ao arquivo solicitado' });
+    res.sendFile(absolutePath);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============================================================
+// TEMPLATE EDITOR
+// ============================================================
+
+app.get('/api/template', async (req, res) => {
+  try { res.json(loadActiveTemplate()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/template', async (req, res) => {
+  try { res.json({ success: true, template: saveActiveTemplate(req.body) }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/template/reset', async (req, res) => {
+  try { res.json({ success: true, template: resetActiveTemplate() }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/template/backups', async (req, res) => {
+  try { res.json({ backups: listTemplateBackups() }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/template/restore', async (req, res) => {
+  try { res.json({ success: true, template: restoreTemplateBackup(req.body.name) }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/template/preview', async (req, res) => {
+  try {
+    const mock = { hash: `preview_${Date.now()}`, title: req.body.title || 'Preview', summary: req.body.summary || '', category: req.body.category || 'GERAL' };
+    const result = await generator.generate(mock, 'ururau-reels', ['preview']);
+    if (!result.success) return res.status(400).json(result);
+    res.json({ success: true, mediaPath: result.files[0].path });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/template/scrape', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'URL inválida' });
+    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 AutoPost' } });
+    const html = await response.text();
+    const title = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)/i)?.[1]
+      || html.match(/<title>([^<]+)/i)?.[1] || '';
+    const summary = html.match(/<meta[^>]*(property=["']og:description["']|name=["']description["'])[^>]*content=["']([^"']+)/i)?.[2] || '';
+    res.json({ title: title.trim().slice(0, 200), summary: summary.trim().slice(0, 500) });
+  } catch (err) {
+    res.status(500).json({ error: `Falha ao extrair URL: ${err.message}` });
+  }
+});
+
 // ============================================================
 // AUTOBLOG
 // ============================================================
@@ -352,3 +415,4 @@ if (process.argv.includes('--start')) {
 }
 
 export default app;
+

@@ -1,177 +1,117 @@
 'use client';
+import { useEffect, useMemo, useState } from 'react';
+import { Save, RotateCcw, Eye, Move } from 'lucide-react';
 
-import { useState } from 'react';
-import { Save, Eye, Download, Check } from 'lucide-react';
-
-const defaultTemplate = {
-  id: 'ururau-reels',
-  name: 'Ururau Reels',
-  dimensions: { width: 1080, height: 1920 },
-  colors: {
-    background: '#0a0a1a', overlayFrom: 'rgba(10,10,30,0.15)', overlayTo: 'rgba(5,3,25,0.88)',
-    badge: '#E63946', line: '#C11F25', title: '#FFFFFF', summary: '#E0E0E0', gold: '#FFD700',
-  },
-  fonts: {
-    title: { family: 'Montserrat', size: 58, weight: 'bold' },
-    summary: { family: 'Inter', size: 28, weight: 'regular' },
-  },
-};
+const apiBase = 'http://localhost:3001';
 
 export default function TemplatesPage() {
-  const [template, setTemplate] = useState(defaultTemplate);
-  const [previewTitle, setPreviewTitle] = useState('A maldição da legislação eleitoral no Brasil');
-  const [previewSummary, setPreviewSummary] = useState('Show em Copacabana mostra como a lei eleitoral convive com distorções...');
-  const [saved, setSaved] = useState(false);
+  const [template, setTemplate] = useState(null);
+  const [selectedLayer, setSelectedLayer] = useState('title');
+  const [preview, setPreview] = useState({ url: '', title: 'Título de teste do template', summary: 'Resumo de teste', category: 'GERAL' });
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [status, setStatus] = useState({ type: '', message: '' });
 
-  const updateColor = (key, value) => { setTemplate(p => ({ ...p, colors: { ...p.colors, [key]: value } })); setSaved(false); };
-  const updateFont = (section, key, value) => { setTemplate(p => ({ ...p, fonts: { ...p.fonts, [section]: { ...p.fonts[section], [key]: value } } })); setSaved(false); };
-  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const layers = template?.layers || {};
 
-  const templates = [
-    { id: 'ururau-reels', label: 'Ururau Reels', size: '1080×1920', ratio: '9:16', active: true },
-    { id: 'ururau-classic', label: 'Ururau Classic', size: '1080×1080', ratio: '1:1' },
-    { id: 'ururau-light', label: 'Ururau Light', size: '1200×630', ratio: '16:9' },
-    { id: 'ururau-breaking', label: 'Ururau Breaking', size: '1080×1920', ratio: '9:16' },
-  ];
+  const loadTemplate = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/template`);
+      const data = await res.json();
+      setTemplate(data);
+      setStatus({ type: '', message: '' });
+    } catch {
+      setStatus({ type: 'error', message: 'Erro ao carregar template.' });
+    }
+  };
+  useEffect(() => { loadTemplate(); }, []);
 
-  return (
-    <div className="space-y-6 animate-fade-up">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground tracking-tight">Templates</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Edite a identidade visual e o estilo das artes geradas</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border text-sm text-foreground hover:bg-muted transition-colors">
-            <Download size={15} /> Exportar JSON
-          </button>
-          <button onClick={handleSave}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all shadow-soft ${
-              saved ? 'bg-success text-success-foreground' : 'bg-primary text-primary-foreground hover:opacity-90'
-            }`}>
-            {saved ? <Check size={15} strokeWidth={2.5} /> : <Save size={15} strokeWidth={2.5} />}
-            {saved ? 'Salvo!' : 'Salvar Template'}
-          </button>
-        </div>
-      </div>
+  const updateLayer = (key, patch) => setTemplate(t => ({ ...t, layers: { ...t.layers, [key]: { ...t.layers[key], ...patch } } }));
+  const nudge = (dx, dy) => updateLayer(selectedLayer, { x: (layers[selectedLayer]?.x || 0) + dx, y: (layers[selectedLayer]?.y || 0) + dy });
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
-          <div className="bg-card border border-border rounded-xl shadow-soft p-6">
-            <h3 className="text-base font-semibold text-foreground mb-1">Cores do Template</h3>
-            <p className="text-xs text-muted-foreground mb-4">Defina a paleta usada nas artes</p>
-            <div className="grid grid-cols-2 gap-3">
-              {Object.entries(template.colors).map(([key, value]) => (
-                <div key={key} className="space-y-1">
-                  <label className="text-xs text-muted-foreground capitalize font-medium">{key.replace(/([A-Z])/g, ' $1').trim()}</label>
-                  <div className="flex items-center gap-2">
-                    <input type="color" value={value.startsWith('#') ? value : '#E63946'} onChange={e => updateColor(key, e.target.value)}
-                      className="w-9 h-9 rounded-md border border-border bg-transparent cursor-pointer" />
-                    <input type="text" value={value} onChange={e => updateColor(key, e.target.value)}
-                      className="flex-1 bg-muted border border-transparent focus:bg-background focus:border-primary rounded-md px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+  const saveTemplate = async () => {
+    const res = await fetch(`${apiBase}/api/template`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(template) });
+    if (res.ok) setStatus({ type: 'success', message: 'Template salvo com sucesso.' });
+    else setStatus({ type: 'error', message: 'Erro ao salvar template.' });
+  };
 
-          <div className="bg-card border border-border rounded-xl shadow-soft p-6">
-            <h3 className="text-base font-semibold text-foreground mb-1">Tipografia</h3>
-            <p className="text-xs text-muted-foreground mb-4">Famílias, tamanhos e pesos das fontes</p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1 block">Família do título</label>
-                <input type="text" value={template.fonts.title.family} onChange={e => updateFont('title', 'family', e.target.value)}
-                  className="w-full bg-muted border border-transparent focus:bg-background focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground font-medium mb-1 block">Tamanho</label>
-                  <input type="number" value={template.fonts.title.size} onChange={e => updateFont('title', 'size', parseInt(e.target.value))}
-                    className="w-full bg-muted border border-transparent focus:bg-background focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground font-medium mb-1 block">Peso</label>
-                  <select value={template.fonts.title.weight} onChange={e => updateFont('title', 'weight', e.target.value)}
-                    className="w-full bg-muted border border-transparent focus:bg-background focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
-                    <option>normal</option><option>bold</option><option>600</option><option>800</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
+  const resetTemplate = async () => {
+    const res = await fetch(`${apiBase}/api/template/reset`, { method: 'POST' });
+    const data = await res.json();
+    setTemplate(data.template);
+    setStatus({ type: 'success', message: 'Template restaurado para o padrão.' });
+  };
 
-          <div className="bg-card border border-border rounded-xl shadow-soft p-6">
-            <h3 className="text-base font-semibold text-foreground mb-1">Texto de Preview</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1 block">Título de teste</label>
-                <input type="text" value={previewTitle} onChange={e => setPreviewTitle(e.target.value)}
-                  className="w-full bg-muted border border-transparent focus:bg-background focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground font-medium mb-1 block">Resumo de teste</label>
-                <textarea value={previewSummary} onChange={e => setPreviewSummary(e.target.value)} rows={3}
-                  className="w-full bg-muted border border-transparent focus:bg-background focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none" />
-              </div>
-            </div>
-          </div>
-        </div>
+  const scrapeFromUrl = async () => {
+    if (!preview.url) return;
+    const res = await fetch(`${apiBase}/api/template/scrape`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: preview.url }) });
+    const data = await res.json();
+    if (res.ok) setPreview(p => ({ ...p, ...data }));
+    else setStatus({ type: 'error', message: data.error || 'Falha ao extrair dados da URL.' });
+  };
 
-        <div className="space-y-5">
-          <div className="bg-card border border-border rounded-xl shadow-soft p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-foreground">Preview</h3>
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted px-2 py-1 rounded">
-                <Eye size={11} /> {template.dimensions.width} × {template.dimensions.height}
-              </div>
-            </div>
-            <div className="relative mx-auto rounded-lg overflow-hidden shadow-lg" style={{ width: 240, height: 426, backgroundColor: template.colors.background }}>
-              <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${template.colors.overlayFrom}, ${template.colors.overlayTo})` }} />
-              <div className="absolute top-3 left-3">
-                <p className="font-bold text-white text-sm tracking-wider">ururau</p>
-                <p className="text-[9px]" style={{ color: template.colors.gold, letterSpacing: '0.15em' }}>19 ANOS</p>
-              </div>
-              <div className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center font-bold text-white text-xs"
-                style={{ backgroundColor: template.colors.badge, border: '2px solid white' }}>U</div>
-              <div className="absolute bottom-44 left-3 px-2 py-0.5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: template.colors.badge }}>OPINIÃO</div>
-              <div className="absolute bottom-28 left-3 right-3">
-                <p className="font-bold text-white leading-tight" style={{ fontSize: 14, fontFamily: template.fonts.title.family }}>{previewTitle}</p>
-                <div className="mt-1.5 w-10 h-0.5 rounded" style={{ backgroundColor: template.colors.line }} />
-              </div>
-              <div className="absolute bottom-10 left-3 right-3">
-                <p className="text-[10px] leading-relaxed" style={{ color: template.colors.summary, fontFamily: template.fonts.summary.family }}>{previewSummary}</p>
-              </div>
-              <div className="absolute bottom-2 left-3"><p className="text-[7px] text-white/40 tracking-widest">URURAU.COM.BR</p></div>
-            </div>
-          </div>
+  const generatePreview = async () => {
+    const res = await fetch(`${apiBase}/api/template/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(preview) });
+    const data = await res.json();
+    if (res.ok) setPreviewUrl(`${apiBase}/api/media?path=${encodeURIComponent(data.mediaPath)}`);
+    else setStatus({ type: 'error', message: data.error || 'Falha no preview.' });
+  };
 
-          <div className="bg-card border border-border rounded-xl shadow-soft p-6">
-            <h3 className="text-base font-semibold text-foreground mb-1">Templates Disponíveis</h3>
-            <p className="text-xs text-muted-foreground mb-4">{templates.length} modelos cadastrados</p>
-            <div className="space-y-2">
-              {templates.map(t => (
-                <div key={t.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${
-                  t.active ? 'bg-primary/5 border-primary/30 ring-1 ring-primary/20' : 'bg-muted/30 border-border hover:bg-muted/60'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-md bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground text-sm font-bold">{t.label.charAt(0)}</div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{t.label}</p>
-                      <p className="text-[11px] text-muted-foreground">{t.size} · {t.ratio}</p>
-                    </div>
-                  </div>
-                  {t.active ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-success/10 text-success border border-success/20">ATIVO</span>
-                  ) : (
-                    <button className="text-[11px] text-primary font-semibold hover:underline">Usar</button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+  const visualLayers = useMemo(() => Object.entries(layers).filter(([, l]) => typeof l.x === 'number' && typeof l.y === 'number'), [layers]);
+
+  if (!template) return <div className="p-6">Carregando template...</div>;
+
+  return <div className="space-y-6 animate-fade-up">
+    <div className="flex justify-between items-center">
+      <div><h2 className="text-2xl font-bold">Templates</h2><p className="text-sm text-muted-foreground">Editor visual simplificado com persistência backend.</p></div>
+      <div className="flex gap-2">
+        <button onClick={resetTemplate} className="px-3 py-2 border rounded-lg flex items-center gap-2"><RotateCcw size={14} /> Restaurar</button>
+        <button onClick={saveTemplate} className="px-3 py-2 bg-primary text-primary-foreground rounded-lg flex items-center gap-2"><Save size={14} /> Salvar</button>
       </div>
     </div>
-  );
+
+    {status.message && <div className={`p-3 rounded-lg text-sm ${status.type === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'}`}>{status.message}</div>}
+
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <div className="xl:col-span-2 bg-card border border-border rounded-xl p-4">
+        <h3 className="font-semibold mb-3">Editor visual</h3>
+        <div className="flex gap-4">
+          <div className="relative rounded-lg overflow-hidden border" style={{ width: 270, height: 480, background: '#050510' }}>
+            {visualLayers.map(([key, l]) => (
+              <button key={key} onClick={() => setSelectedLayer(key)} style={{ left: (l.x || 0) / 4, top: (l.y || 0) / 4 }} className={`absolute px-2 py-1 text-[10px] rounded ${selectedLayer === key ? 'bg-primary text-white' : 'bg-white/80'}`}>
+                {key}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-2 text-sm">
+            <p className="font-medium">Camada selecionada: {selectedLayer}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="number" className="border rounded px-2 py-1" value={layers[selectedLayer]?.x ?? 0} onChange={e => updateLayer(selectedLayer, { x: Number(e.target.value) })} />
+              <input type="number" className="border rounded px-2 py-1" value={layers[selectedLayer]?.y ?? 0} onChange={e => updateLayer(selectedLayer, { y: Number(e.target.value) })} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <button onClick={() => nudge(0, -5)} className="border rounded px-2 py-1">↑</button>
+              <button onClick={() => nudge(-5, 0)} className="border rounded px-2 py-1">←</button>
+              <button onClick={() => nudge(5, 0)} className="border rounded px-2 py-1">→</button>
+              <button onClick={() => nudge(0, 5)} className="border rounded px-2 py-1">↓</button>
+              <button onClick={() => nudge(-20, 0)} className="border rounded px-2 py-1"><Move size={12} /></button>
+              <button onClick={() => nudge(20, 0)} className="border rounded px-2 py-1"><Move size={12} /></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-4 space-y-2">
+        <h3 className="font-semibold">Preview da matéria</h3>
+        <input placeholder="URL da matéria para teste" className="w-full border rounded px-2 py-1" value={preview.url} onChange={e => setPreview(p => ({ ...p, url: e.target.value }))} />
+        <button onClick={scrapeFromUrl} className="w-full border rounded px-2 py-1">Extrair do link</button>
+        <input className="w-full border rounded px-2 py-1" value={preview.title} onChange={e => setPreview(p => ({ ...p, title: e.target.value }))} />
+        <textarea className="w-full border rounded px-2 py-1" rows={3} value={preview.summary} onChange={e => setPreview(p => ({ ...p, summary: e.target.value }))} />
+        <select className="w-full border rounded px-2 py-1" value={preview.category} onChange={e => setPreview(p => ({ ...p, category: e.target.value }))}>
+          {Object.keys(template.categoryColors || { GERAL: '#6c757d' }).map(c => <option key={c}>{c}</option>)}
+        </select>
+        <button onClick={generatePreview} className="w-full bg-primary text-white rounded px-2 py-2 flex items-center justify-center gap-2"><Eye size={14} /> Gerar preview real</button>
+        {previewUrl && <img src={previewUrl} alt="preview" className="w-full rounded border" />}
+      </div>
+    </div>
+  </div>;
 }
