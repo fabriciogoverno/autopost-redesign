@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  autopost-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: autopost-api
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - URURAU_DB_PATH=/data/autopost.db
+      - LOG_LEVEL=info
+    volumes:
+      - ./database:/data
+      - ./output:/app/output
+      - ./config:/app/config
+      - ./templates:/app/templates
+    restart: unless-stopped
+    networks:
+      - autopost-network
+
+  autopost-dashboard:
+    build:
+      context: ./src/dashboard
+      dockerfile: Dockerfile
+    container_name: autopost-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    depends_on:
+      - autopost-api
+    restart: unless-stopped
+    networks:
+      - autopost-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: autopost-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - autopost-network
+
+volumes:
+  ollama-data:
+
+networks:
+  autopost-network:
+    driver: bridge

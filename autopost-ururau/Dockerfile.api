@@ -1,0 +1,24 @@
+FROM node:24-slim
+
+WORKDIR /app
+
+# Instala dependências do sistema para Canvas/Sharp
+RUN apt-get update && apt-get install -y \
+    python3 \
+    build-essential \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
+    libvips-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+EXPOSE 3001
+
+CMD ["node", "src/backend/api/server.js", "--start"]

@@ -1,0 +1,17 @@
+{
+  "channels": [
+    {
+      "id": "120363000000000000@newsletter",
+      "name": "Ururau Notícias",
+      "addedAt": "2026-05-04T00:00:00Z"
+    }
+  ],
+  "groups": [
+    {
+      "id": "5511999999999-1234567890@g.us",
+      "name": "Ururau Comunidade",
+      "addedAt": "2026-05-04T00:00:00Z"
+    }
+  ],
+  "_note": "Substitua os IDs pelos reais. Use 'autopost.js whatsapp-list-chats' para descobrir."
+}

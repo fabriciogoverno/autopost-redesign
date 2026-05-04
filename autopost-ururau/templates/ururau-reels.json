@@ -1,0 +1,215 @@
+{
+  "id": "ururau-reels",
+  "name": "Ururau Reels (Canva Reference v2)",
+  "description": "Template baseado na arte real editável do Canva do Ururau — proporção 9:16 para Reels/Stories. Cores extraídas pixel-a-pixel da referência.",
+  "version": "2.0.0",
+  "dimensions": {
+    "width": 1080,
+    "height": 1920,
+    "aspectRatio": "9:16"
+  },
+  "background": {
+    "type": "image",
+    "fallbackColor": "#0a0a1a",
+    "fallbackImage": "./templates/assets/ururau-default-bg.jpg",
+    "overlay": {
+      "type": "gradient",
+      "from": "rgba(10, 10, 30, 0.15)",
+      "to": "rgba(5, 3, 25, 0.88)",
+      "direction": "top-to-bottom"
+    }
+  },
+  "elements": [
+    {
+      "id": "logo_ururau",
+      "type": "text",
+      "text": "ururau",
+      "position": {
+        "x": 60,
+        "y": 50
+      },
+      "font": {
+        "family": "Montserrat",
+        "weight": "bold",
+        "size": 52,
+        "color": "#FFFFFF",
+        "lineHeight": 1.0
+      },
+      "letterSpacing": 2
+    },
+    {
+      "id": "badge_anos",
+      "type": "text",
+      "text": "19 ANOS",
+      "position": {
+        "x": 60,
+        "y": 110
+      },
+      "font": {
+        "family": "Montserrat",
+        "weight": "600",
+        "size": 20,
+        "color": "#FFD700",
+        "lineHeight": 1.0
+      },
+      "letterSpacing": 4
+    },
+    {
+      "id": "logo_icon",
+      "type": "shape",
+      "shape": "circle",
+      "position": {
+        "x": 940,
+        "y": 40,
+        "width": 80,
+        "height": 80
+      },
+      "fill": "#E63946",
+      "stroke": {
+        "color": "#FFFFFF",
+        "width": 3
+      }
+    },
+    {
+      "id": "logo_icon_text",
+      "type": "text",
+      "text": "U",
+      "position": {
+        "x": 955,
+        "y": 58
+      },
+      "font": {
+        "family": "Montserrat",
+        "weight": "bold",
+        "size": 40,
+        "color": "#FFFFFF",
+        "lineHeight": 1.0
+      }
+    },
+    {
+      "id": "category_badge",
+      "type": "badge",
+      "text": "{{category}}",
+      "position": {
+        "x": 60,
+        "y": 880
+      },
+      "background": "#E63946",
+      "font": {
+        "family": "Montserrat",
+        "weight": "bold",
+        "size": 26,
+        "color": "#FFFFFF",
+        "lineHeight": 1.0
+      },
+      "padding": {
+        "top": 12,
+        "bottom": 12,
+        "left": 24,
+        "right": 24
+      },
+      "borderRadius": 6
+    },
+    {
+      "id": "title_main",
+      "type": "text",
+      "text": "{{title}}",
+      "position": {
+        "x": 60,
+        "y": 960
+      },
+      "maxWidth": 960,
+      "font": {
+        "family": "Montserrat",
+        "weight": "bold",
+        "size": 58,
+        "color": "#FFFFFF",
+        "lineHeight": 1.15
+      },
+      "maxLines": 5,
+      "textTransform": "none"
+    },
+    {
+      "id": "title_underline",
+      "type": "line",
+      "position": {
+        "x": 60,
+        "y": 0
+      },
+      "relativeTo": "title_main",
+      "relativeY": 20,
+      "width": 200,
+      "height": 6,
+      "color": "#C11F25"
+    },
+    {
+      "id": "summary_text",
+      "type": "text",
+      "text": "{{summary}}",
+      "position": {
+        "x": 60,
+        "y": 0
+      },
+      "relativeTo": "title_underline",
+      "relativeY": 30,
+      "maxWidth": 960,
+      "font": {
+        "family": "Inter",
+        "weight": "regular",
+        "size": 28,
+        "color": "#E0E0E0",
+        "lineHeight": 1.4
+      },
+      "maxLines": 6
+    },
+    {
+      "id": "watermark",
+      "type": "text",
+      "text": "URURAU.COM.BR",
+      "position": {
+        "x": 60,
+        "y": 1850
+      },
+      "font": {
+        "family": "Inter",
+        "weight": "600",
+        "size": 16,
+        "color": "rgba(255,255,255,0.5)",
+        "lineHeight": 1.0
+      },
+      "letterSpacing": 3
+    }
+  ],
+  "rules": {
+    "titleMaxLength": 140,
+    "summaryMaxLength": 280,
+    "imageRequired": true,
+    "imageFallback": "./templates/assets/ururau-default-bg.jpg"
+  },
+  "categories": {
+    "opiniao": {
+      "badgeColor": "#E63946",
+      "badgeText": "OPINIÃO"
+    },
+    "politica": {
+      "badgeColor": "#1D3557",
+      "badgeText": "POLÍTICA"
+    },
+    "esporte": {
+      "badgeColor": "#2A9D8F",
+      "badgeText": "ESPORTE"
+    },
+    "seguranca": {
+      "badgeColor": "#E9C46A",
+      "badgeText": "SEGURANÇA"
+    },
+    "economia": {
+      "badgeColor": "#F4A261",
+      "badgeText": "ECONOMIA"
+    },
+    "geral": {
+      "badgeColor": "#6C757D",
+      "badgeText": "GERAL"
+    }
+  }
+}

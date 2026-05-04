@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "autopost-ururau"
+version = "1.0.0"
+description = "Sistema autônomo de geração e publicação automática de posts — Projeto Ururau"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "fabri", email = "ururau@example.com"}
+]
+keywords = ["autopost", "ururau", "automação", "redes-sociais", "jornalismo"]
+
+[project.scripts]
+ururau-autopost = "src.backend.cli.autopost:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
