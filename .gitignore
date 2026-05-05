@@ -28,3 +28,6 @@ __pycache__/
 *.log
 .DS_Store
 Thumbs.db
+
+# Vendored libs (gerados por scripts/vendor-*.mjs no postinstall)
+autopost-ururau/src/dashboard/public/vendor/

@@ -3,18 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
+    "dev": "npm run vendor:konva && next dev -p 3000",
+    "build": "npm run vendor:konva && next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "vendor:konva": "node scripts/vendor-konva.mjs",
+    "postinstall": "npm run vendor:konva"
   },
   "dependencies": {
+    "clsx": "^2.1.0",
+    "konva": "^9.3.22",
+    "lucide-react": "^0.378.0",
     "next": "^14.2.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "recharts": "^2.12.0",
-    "lucide-react": "^0.378.0",
-    "clsx": "^2.1.0",
     "tailwind-merge": "^2.3.0"
   },
   "devDependencies": {
