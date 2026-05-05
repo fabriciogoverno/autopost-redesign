@@ -13,6 +13,22 @@
   const CANVAS_HEIGHT = 1920;
   const MIN_BADGE_WIDTH = 150;
   const SEPARATOR_HIT_HEIGHT = 34;
+  const DEFAULT_FONT_FAMILY = 'Aileron';
+  const COMPONENT_TYPES = {
+    category: 'badge',
+    title: 'textBox',
+    summary: 'textBox',
+    watermark: 'textBox',
+    separator: 'shapeLine'
+  };
+  const COMPONENT_LABELS = {
+    category: 'Badge Categoria',
+    title: 'Titulo',
+    separator: 'Linha Decorativa',
+    summary: 'Subtitulo',
+    watermark: 'Watermark'
+  };
+  const PRIMARY_LAYER_KEYS = ['category', 'title', 'separator', 'summary', 'watermark'];
 
   const FALLBACK_CATEGORY_COLORS = {
     OPINIAO: '#e63946', POLITICA: '#1d3557', ESPORTE: '#2a9d8f',
@@ -128,42 +144,56 @@
     if (layers.category) {
       const cat = layers.category;
       const catLabel = previewCategory;
-      const badgeWidth = calculateBadgeWidth(catLabel, cat.fontSize || 22, cat.paddingX || 24);
+      const badgeFontSize = toNumber(cat.fontSize, 22);
+      const badgePaddingX = toNumber(cat.paddingX, 24);
+      const badgePaddingY = toNumber(cat.paddingY, 14);
+      const badgeAutoWidth = cat.autoWidth !== false;
+      const badgeWidth = badgeAutoWidth
+        ? calculateBadgeWidth(catLabel, badgeFontSize, badgePaddingX)
+        : Math.max(1, toNumber(cat.width, MIN_BADGE_WIDTH));
+      const badgeHeight = Math.max(1, toNumber(cat.height, badgeFontSize + badgePaddingY * 2));
       const badgeColor = getCategoryColor(catLabel, categoryColors);
       const configuredBadgeColor = isHexColor(cat.background) ? cat.background : badgeColor;
 
       const badgeGroup = new Konva.Group({
         x: cat.x, y: cat.y,
         width: badgeWidth,
-        height: cat.height || 52,
+        height: badgeHeight,
         draggable: true,
         name: 'category',
-        id: 'category'
+        id: 'category',
+        componentType: 'badge',
+        autoWidth: badgeAutoWidth,
+        paddingX: badgePaddingX,
+        paddingY: badgePaddingY,
+        borderRadius: toNumber(cat.borderRadius, toNumber(cat.radius, 6)),
+        fontFamily: getFontFamily(cat),
+        fontWeight: cat.fontWeight || 'bold'
       });
 
       const badgeHit = new Konva.Rect({
         width: badgeWidth,
-        height: cat.height || 52,
+        height: badgeHeight,
         fill: 'rgba(0,0,0,0)',
         name: 'badge-hit'
       });
 
       const badgeRect = new Konva.Rect({
         width: badgeWidth,
-        height: cat.height || 52,
+        height: badgeHeight,
         fill: configuredBadgeColor,
-        cornerRadius: cat.radius || 6,
+        cornerRadius: toNumber(cat.borderRadius, toNumber(cat.radius, 6)),
         name: 'badge-bg'
       });
 
       const badgeText = new Konva.Text({
-        x: cat.paddingX || 24,
-        y: ((cat.height || 52) - (cat.fontSize || 22)) / 2 + 2,
+        x: badgePaddingX,
+        y: ((badgeHeight) - badgeFontSize) / 2 + 2,
         text: catLabel,
-        fontSize: cat.fontSize || 22,
-        fontFamily: (cat.fontFamily || 'Arial').split(',')[0].trim(),
+        fontSize: badgeFontSize,
+        fontFamily: getFontFamily(cat),
         fontStyle: cat.fontWeight || 'bold',
-        fill: cat.color || '#ffffff',
+        fill: cat.textColor || cat.color || '#ffffff',
         name: 'badge-text'
       });
 
@@ -182,14 +212,16 @@
         x: tit.x, y: tit.y,
         text: previewTitle,
         fontSize: tit.fontSize || 60,
-        fontFamily: (tit.fontFamily || 'Arial').split(',')[0].trim(),
+        fontFamily: getFontFamily(tit),
         fontStyle: tit.fontWeight || 'bold',
         fill: tit.color || '#ffffff',
         width: tit.maxWidth || 970,
+        lineHeight: getKonvaLineHeight(tit),
         opacity: typeof tit.opacity === 'number' ? tit.opacity : 1,
         draggable: true,
         name: 'title',
-        id: 'title'
+        id: 'title',
+        componentType: 'textBox'
       });
       setupElementEvents(titleText, 'title');
       layer.add(titleText);
@@ -214,7 +246,8 @@
         height: hitHeight,
         draggable: true,
         name: 'separator',
-        id: 'separator'
+        id: 'separator',
+        componentType: 'shapeLine'
       });
 
       const lineHit = new Konva.Rect({
@@ -254,13 +287,16 @@
         x: sum.x, y: sumY,
         text: previewSummary,
         fontSize: sum.fontSize || 32,
-        fontFamily: (sum.fontFamily || 'Arial').split(',')[0].trim(),
+        fontFamily: getFontFamily(sum),
+        fontStyle: sum.fontWeight || 'normal',
         fill: sum.color || '#E0E0E0',
         width: sum.maxWidth || 970,
+        lineHeight: getKonvaLineHeight(sum),
         opacity: typeof sum.opacity === 'number' ? sum.opacity : 1,
         draggable: true,
         name: 'summary',
-        id: 'summary'
+        id: 'summary',
+        componentType: 'textBox'
       });
       setupElementEvents(summaryText, 'summary');
       layer.add(summaryText);
@@ -273,19 +309,98 @@
         x: wm.x, y: wm.y,
         text: wm.text || 'URURAU.COM.BR',
         fontSize: wm.fontSize || 18,
-        fontFamily: (wm.fontFamily || 'Arial').split(',')[0].trim(),
+        fontFamily: getFontFamily(wm),
+        fontStyle: wm.fontWeight || 'normal',
         fill: wm.color || '#ffffff',
         opacity: typeof wm.opacity === 'number' ? wm.opacity : 0.5,
         draggable: true,
         name: 'watermark',
-        id: 'watermark'
+        id: 'watermark',
+        componentType: 'textBox'
       });
       setupElementEvents(wmText, 'watermark');
       layer.add(wmText);
       konvaElements.watermark = wmText;
     }
 
+    getOrderedExtraLayerKeys(layers).forEach(function (key) {
+      if (konvaElements[key]) return;
+      const config = layers[key];
+      const componentType = getComponentType(key, config);
+      if (componentType === 'overlay') createOverlayElement(key, config);
+      else if (componentType === 'image' || componentType === 'logo') createImageElement(key, config, componentType);
+    });
+
     layer.draw();
+  }
+
+  function createOverlayElement(key, config) {
+    const overlay = new Konva.Rect({
+      x: toNumber(config.x, 0),
+      y: toNumber(config.y, 0),
+      width: Math.max(1, toNumber(config.width, CANVAS_WIDTH)),
+      height: Math.max(1, toNumber(config.height, CANVAS_HEIGHT)),
+      fill: config.fill || config.color || config.background || '#000000',
+      opacity: toNumber(config.opacity, 0.35),
+      cornerRadius: toNumber(config.borderRadius, toNumber(config.radius, 0)),
+      draggable: true,
+      name: key,
+      id: key,
+      componentType: 'overlay'
+    });
+    setupElementEvents(overlay, key);
+    layer.add(overlay);
+    overlay.moveToBottom();
+    if (bgImageObj) bgImageObj.moveToBottom();
+    konvaElements[key] = overlay;
+  }
+
+  function createImageElement(key, config, componentType) {
+    const placeholder = new Konva.Rect({
+      x: toNumber(config.x, 0),
+      y: toNumber(config.y, 0),
+      width: Math.max(1, toNumber(config.width, 160)),
+      height: Math.max(1, toNumber(config.height, 80)),
+      fill: 'rgba(255,255,255,0.08)',
+      stroke: 'rgba(255,255,255,0.35)',
+      dash: [8, 6],
+      opacity: toNumber(config.opacity, 1),
+      draggable: true,
+      name: key,
+      id: key,
+      componentType: componentType
+    });
+    setupElementEvents(placeholder, key);
+    layer.add(placeholder);
+    konvaElements[key] = placeholder;
+
+    const src = config.src || config.image || config.url;
+    if (!src) return;
+    const image = new Image();
+    image.onload = function () {
+      const imageNode = new Konva.Image({
+        x: placeholder.x(),
+        y: placeholder.y(),
+        width: placeholder.width(),
+        height: placeholder.height(),
+        image: image,
+        opacity: placeholder.opacity(),
+        draggable: true,
+        name: key,
+        id: key,
+        componentType: componentType
+      });
+      placeholder.destroy();
+      setupElementEvents(imageNode, key);
+      layer.add(imageNode);
+      konvaElements[key] = imageNode;
+      layer.draw();
+      updateElementList();
+    };
+    image.onerror = function () {
+      showStatus('Imagem do componente "' + key + '" nao encontrada.', 'info');
+    };
+    image.src = src;
   }
 
   function setupElementEvents(node, key) {
@@ -422,10 +537,6 @@
   function updateElementList() {
     const list = document.getElementById('elementList');
     if (!list) return;
-    const names = {
-      category: 'Badge Categoria', title: 'Titulo',
-      separator: 'Linha Decorativa', summary: 'Subtitulo', watermark: 'Watermark'
-    };
     let html = '';
     Object.keys(konvaElements).forEach(function (key) {
       const node = konvaElements[key];
@@ -433,8 +544,8 @@
       const pos = 'X:' + Math.round(node.x()) + ' Y:' + Math.round(node.y());
       html += '<div class="element-item ' + isActive +
         '" onclick="selectElementFromList(\'' + key + '\')">' +
-        '<span>' + (names[key] || key) + '</span>' +
-        '<span class="element-type">' + pos + '</span></div>';
+        '<span>' + escapeHtmlText(getElementLabel(key)) + '</span>' +
+        '<span class="element-type">' + getElementType(node, key) + ' ' + pos + '</span></div>';
     });
     list.innerHTML = html;
   }
@@ -442,60 +553,127 @@
   function updatePropertiesPanel(key) {
     const node = konvaElements[key];
     if (!node) return;
-    const type = node.getClassName();
-    let html = '<div class="tool-group"><label>Elemento</label><input type="text" value="' + key + '" disabled></div>';
+    const componentType = getElementType(node, key);
+    let html = '<div class="tool-group"><label>Componente</label><input type="text" value="' +
+      escapeHtmlAttr(getElementLabel(key) + ' / ' + componentType) + '" disabled></div>';
     html += '<div class="tool-row">' +
-      '<div class="tool-group"><label>X</label><input type="number" id="propX" value="' + Math.round(node.x()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'x\', this.value)"></div>' +
-      '<div class="tool-group"><label>Y</label><input type="number" id="propY" value="' + Math.round(node.y()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'y\', this.value)"></div>' +
+      numberControl(key, 'x', 'X', Math.round(node.x())) +
+      numberControl(key, 'y', 'Y', Math.round(node.y())) +
       '</div>';
 
-    if (type === 'Text') {
-      html += '<div class="tool-group"><label>Texto</label><input type="text" id="propText" value="' + escapeHtmlAttr(node.text()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'text\', this.value)"></div>';
-      html += '<div class="tool-row">' +
-        '<div class="tool-group"><label>Fonte (px)</label><input type="number" value="' + node.fontSize() + '" onchange="updateNodePropFromInput(\'' + key + '\', \'fontSize\', this.value)"></div>' +
-        '<div class="tool-group"><label>Cor</label><input type="color" value="' + colorToHex(node.fill()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'fill\', this.value)"></div>' +
-        '</div>';
-      html += '<div class="tool-group"><label>Opacidade (' + node.opacity().toFixed(2) + ')</label><input type="range" min="0" max="1" step="0.05" value="' + node.opacity() + '" onchange="updateNodePropFromInput(\'' + key + '\', \'opacity\', this.value)"></div>';
-    }
+    if (componentType === 'badge') html += renderBadgeControls(key, node);
+    else if (componentType === 'shapeLine') html += renderShapeLineControls(key, node);
+    else if (componentType === 'textBox') html += renderTextBoxControls(key, node);
+    else if (componentType === 'overlay') html += renderOverlayControls(key, node);
+    else if (componentType === 'image' || componentType === 'logo') html += renderImageControls(key, node);
+    else html += renderBasicShapeControls(key, node);
 
-    if (type === 'Rect') {
-      html += '<div class="tool-row">' +
-        '<div class="tool-group"><label>Largura</label><input type="number" value="' + Math.round(node.width()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'width\', this.value)"></div>' +
-        '<div class="tool-group"><label>Altura</label><input type="number" value="' + Math.round(node.height()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'height\', this.value)"></div>' +
-        '</div>';
-      html += '<div class="tool-group"><label>Cor</label><input type="color" value="' + colorToHex(node.fill()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'fill\', this.value)"></div>';
-    }
-
-    if (type === 'Group') {
-      const badgeBg = node.findOne('.badge-bg');
-      const badgeText = node.findOne('.badge-text');
-      const separatorVisible = node.findOne('.separator-visible');
-      if (key === 'category' && badgeBg && badgeText) {
-        html += '<div class="tool-group"><label>Texto da categoria</label><input type="text" value="' + escapeHtmlAttr(badgeText.text()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'categoryText\', this.value)"></div>';
-        html += '<div class="tool-row">' +
-          '<div class="tool-group"><label>Largura auto</label><input type="number" value="' + Math.round(badgeBg.width()) + '" disabled></div>' +
-          '<div class="tool-group"><label>Cor do badge</label><input type="color" value="' + colorToHex(badgeBg.fill()) + '" onchange="updateBadgeColor(\'' + key + '\', this.value)"></div>' +
-          '</div>';
-      }
-      if (key === 'separator' && separatorVisible) {
-        html += '<div class="tool-row">' +
-          '<div class="tool-group"><label>Largura</label><input type="number" value="' + Math.round(separatorVisible.width()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'width\', this.value)"></div>' +
-          '<div class="tool-group"><label>Altura visual</label><input type="number" value="' + Math.round(separatorVisible.height()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'height\', this.value)"></div>' +
-          '</div>';
-        html += '<div class="tool-group"><label>Cor</label><input type="color" value="' + colorToHex(separatorVisible.fill()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'fill\', this.value)"></div>';
-      }
-    }
     document.getElementById('propertiesPanel').innerHTML = html;
+  }
+
+  function renderBadgeControls(key, node) {
+    const badgeBg = node.findOne('.badge-bg');
+    const badgeText = node.findOne('.badge-text');
+    if (!badgeBg || !badgeText) return '';
+    const autoWidth = node.getAttr('autoWidth') !== false;
+    return textControl(key, 'text', 'Texto da editoria', badgeText.text()) +
+      '<div class="tool-row">' +
+      numberControl(key, 'width', 'Largura', Math.round(badgeBg.width())) +
+      numberControl(key, 'height', 'Altura', Math.round(badgeBg.height())) +
+      '</div>' +
+      checkboxControl(key, 'autoWidth', 'Auto largura', autoWidth) +
+      '<div class="tool-row">' +
+      colorControl(key, 'background', 'Fundo', badgeBg.fill()) +
+      colorControl(key, 'textColor', 'Cor do texto', badgeText.fill()) +
+      '</div>' +
+      textControl(key, 'fontFamily', 'Fonte', badgeText.fontFamily()) +
+      '<div class="tool-row">' +
+      selectControl(key, 'fontWeight', 'Peso', badgeText.fontStyle(), ['normal', 'bold', '600', '700', '800']) +
+      numberControl(key, 'fontSize', 'Fonte (px)', badgeText.fontSize()) +
+      '</div>' +
+      '<div class="tool-row">' +
+      numberControl(key, 'paddingX', 'Padding X', node.getAttr('paddingX')) +
+      numberControl(key, 'paddingY', 'Padding Y', node.getAttr('paddingY')) +
+      '</div>' +
+      '<div class="tool-row">' +
+      numberControl(key, 'borderRadius', 'Raio', badgeBg.cornerRadius()) +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
+      '</div>';
+  }
+
+  function renderShapeLineControls(key, node) {
+    const visible = node.findOne('.separator-visible') || node;
+    return '<div class="tool-row">' +
+      numberControl(key, 'width', 'Largura', Math.round(visible.width())) +
+      numberControl(key, 'height', 'Altura visual', Math.round(visible.height())) +
+      '</div>' +
+      '<div class="tool-row">' +
+      colorControl(key, 'color', 'Cor', visible.fill()) +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
+      '</div>';
+  }
+
+  function renderTextBoxControls(key, node) {
+    return textControl(key, 'text', 'Texto', node.text()) +
+      '<div class="tool-row">' +
+      numberControl(key, 'width', 'Largura', Math.round(node.width())) +
+      numberControl(key, 'fontSize', 'Fonte (px)', node.fontSize()) +
+      '</div>' +
+      '<div class="tool-row">' +
+      numberControl(key, 'lineHeightPx', 'Linha (px)', getTextLineHeightPx(node)) +
+      colorControl(key, 'color', 'Cor', node.fill()) +
+      '</div>' +
+      textControl(key, 'fontFamily', 'Fonte', node.fontFamily()) +
+      '<div class="tool-row">' +
+      selectControl(key, 'fontWeight', 'Peso', node.fontStyle() || 'normal', ['normal', 'bold', '600', '700', '800']) +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
+      '</div>';
+  }
+
+  function renderOverlayControls(key, node) {
+    return '<div class="tool-row">' +
+      numberControl(key, 'width', 'Largura', Math.round(node.width())) +
+      numberControl(key, 'height', 'Altura', Math.round(node.height())) +
+      '</div>' +
+      '<div class="tool-row">' +
+      colorControl(key, 'color', 'Cor', node.fill()) +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
+      '</div>' +
+      numberControl(key, 'borderRadius', 'Raio', node.cornerRadius ? node.cornerRadius() : 0);
+  }
+
+  function renderImageControls(key, node) {
+    return '<div class="tool-row">' +
+      numberControl(key, 'width', 'Largura', Math.round(node.width())) +
+      numberControl(key, 'height', 'Altura', Math.round(node.height())) +
+      '</div>' +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity());
+  }
+
+  function renderBasicShapeControls(key, node) {
+    let html = '<div class="tool-row">' +
+      numberControl(key, 'width', 'Largura', Math.round(node.width ? node.width() : 0)) +
+      numberControl(key, 'height', 'Altura', Math.round(node.height ? node.height() : 0)) +
+      '</div>';
+    if (node.fill) html += colorControl(key, 'color', 'Cor', node.fill());
+    return html;
   }
 
   function updateNodeProp(key, prop, value) {
     const node = konvaElements[key];
     if (!node) return;
     saveUndo();
-    if (node.getClassName() === 'Group' && key === 'category') {
-      updateCategoryGroupProp(node, prop, value);
-    } else if (node.getClassName() === 'Group' && key === 'separator') {
-      updateSeparatorGroupProp(node, prop, value);
+    const componentType = getElementType(node, key);
+    if (componentType === 'badge') {
+      updateBadgeProp(node, prop, value);
+    } else if (componentType === 'shapeLine') {
+      updateShapeLineProp(node, prop, value);
+    } else if (componentType === 'textBox') {
+      updateTextBoxProp(node, prop, value);
+    } else if (componentType === 'overlay') {
+      updateOverlayProp(node, prop, value);
+    } else if (componentType === 'image' || componentType === 'logo') {
+      updateImageProp(node, prop, value);
     } else if (prop === 'x' || prop === 'y' || prop === 'width' || prop === 'height' || prop === 'fontSize') {
       node.setAttr(prop, parseFloat(value));
     } else if (prop === 'opacity') {
@@ -515,28 +693,84 @@
   window.updateNodePropFromInput = updateNodeProp;
 
   function updateBadgeColor(key, color) {
-    updateNodeProp(key, 'badgeColor', color);
+    updateNodeProp(key, 'background', color);
   }
   window.updateBadgeColor = updateBadgeColor;
 
-  function updateCategoryGroupProp(group, prop, value) {
+  function updateBadgeProp(group, prop, value) {
     const badgeBg = group.findOne('.badge-bg');
     const badgeText = group.findOne('.badge-text');
     if (prop === 'x' || prop === 'y') {
       group.setAttr(prop, toNumber(value, group.getAttr(prop)));
       return;
     }
-    if (prop === 'categoryText' && badgeText) {
+    if (prop === 'text' && badgeText) {
       badgeText.text(formatCategoryLabel(value, (templateData.layers || {}).category));
       resizeBadgeToText(group);
       return;
     }
-    if ((prop === 'badgeColor' || prop === 'fill') && badgeBg) {
+    if ((prop === 'background' || prop === 'color' || prop === 'fill') && badgeBg) {
       badgeBg.fill(value);
+      return;
+    }
+    if (prop === 'textColor' && badgeText) {
+      badgeText.fill(value);
+      return;
+    }
+    if (prop === 'fontFamily' && badgeText) {
+      badgeText.fontFamily(normalizeFontFamily(value));
+      group.setAttr('fontFamily', normalizeFontFamily(value));
+      resizeBadgeToText(group);
+      return;
+    }
+    if (prop === 'fontWeight' && badgeText) {
+      badgeText.fontStyle(value || 'normal');
+      group.setAttr('fontWeight', value || 'normal');
+      resizeBadgeToText(group);
+      return;
+    }
+    if (prop === 'fontSize' && badgeText) {
+      badgeText.fontSize(Math.max(1, toNumber(value, badgeText.fontSize())));
+      resizeBadgeToText(group);
+      return;
+    }
+    if (prop === 'width' && badgeBg) {
+      const width = Math.max(1, Math.round(toNumber(value, badgeBg.width())));
+      group.setAttr('autoWidth', false);
+      setBadgeWidth(group, width);
+      return;
+    }
+    if (prop === 'height' && badgeBg) {
+      setBadgeHeight(group, Math.max(1, Math.round(toNumber(value, badgeBg.height()))));
+      return;
+    }
+    if (prop === 'paddingX') {
+      group.setAttr('paddingX', Math.max(0, Math.round(toNumber(value, group.getAttr('paddingX')))));
+      resizeBadgeToText(group);
+      return;
+    }
+    if (prop === 'paddingY') {
+      const paddingY = Math.max(0, Math.round(toNumber(value, group.getAttr('paddingY'))));
+      group.setAttr('paddingY', paddingY);
+      if (badgeText) setBadgeHeight(group, Math.max(1, Math.round(badgeText.fontSize() + paddingY * 2)));
+      return;
+    }
+    if (prop === 'borderRadius' && badgeBg) {
+      badgeBg.cornerRadius(Math.max(0, toNumber(value, badgeBg.cornerRadius())));
+      group.setAttr('borderRadius', badgeBg.cornerRadius());
+      return;
+    }
+    if (prop === 'autoWidth') {
+      group.setAttr('autoWidth', value === true || value === 'true');
+      resizeBadgeToText(group);
+      return;
+    }
+    if (prop === 'opacity') {
+      group.opacity(clamp(toNumber(value, group.opacity()), 0, 1));
     }
   }
 
-  function updateSeparatorGroupProp(group, prop, value) {
+  function updateShapeLineProp(group, prop, value) {
     const separatorVisible = group.findOne('.separator-visible');
     const separatorHit = group.findOne('.separator-hit');
     if (prop === 'x' || prop === 'y') {
@@ -557,9 +791,41 @@
       updateSeparatorHitArea(group);
       return;
     }
-    if (prop === 'fill') {
+    if (prop === 'color' || prop === 'fill') {
       separatorVisible.fill(value);
+      return;
     }
+    if (prop === 'opacity') {
+      group.opacity(clamp(toNumber(value, group.opacity()), 0, 1));
+    }
+  }
+
+  function updateTextBoxProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') node.setAttr(prop, toNumber(value, node.getAttr(prop)));
+    else if (prop === 'text') node.text(value);
+    else if (prop === 'width') node.width(Math.max(1, toNumber(value, node.width())));
+    else if (prop === 'fontSize') node.fontSize(Math.max(1, toNumber(value, node.fontSize())));
+    else if (prop === 'fontFamily') node.fontFamily(normalizeFontFamily(value));
+    else if (prop === 'fontWeight') node.fontStyle(value || 'normal');
+    else if (prop === 'color' || prop === 'fill') node.fill(value);
+    else if (prop === 'lineHeightPx') node.lineHeight(Math.max(0.1, toNumber(value, getTextLineHeightPx(node)) / node.fontSize()));
+    else if (prop === 'opacity') node.opacity(clamp(toNumber(value, node.opacity()), 0, 1));
+  }
+
+  function updateOverlayProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') node.setAttr(prop, toNumber(value, node.getAttr(prop)));
+    else if (prop === 'width') node.width(Math.max(1, toNumber(value, node.width())));
+    else if (prop === 'height') node.height(Math.max(1, toNumber(value, node.height())));
+    else if (prop === 'color' || prop === 'fill' || prop === 'background') node.fill(value);
+    else if (prop === 'opacity') node.opacity(clamp(toNumber(value, node.opacity()), 0, 1));
+    else if (prop === 'borderRadius' && node.cornerRadius) node.cornerRadius(Math.max(0, toNumber(value, node.cornerRadius())));
+  }
+
+  function updateImageProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') node.setAttr(prop, toNumber(value, node.getAttr(prop)));
+    else if (prop === 'width') node.width(Math.max(1, toNumber(value, node.width())));
+    else if (prop === 'height') node.height(Math.max(1, toNumber(value, node.height())));
+    else if (prop === 'opacity') node.opacity(clamp(toNumber(value, node.opacity()), 0, 1));
   }
 
   function setupKeyboard() {
@@ -597,6 +863,78 @@
     if (undoStack.length > 30) undoStack.shift();
   }
 
+  function persistBadge(next, target, node) {
+    const badgeBg = node.findOne('.badge-bg');
+    const badgeText = node.findOne('.badge-text');
+    if (!badgeBg || !badgeText) return;
+    const catLabel = formatCategoryLabel(badgeText.text(), target);
+    target.text = catLabel;
+    target.width = Math.round(badgeBg.width());
+    target.height = Math.round(badgeBg.height());
+    target.background = badgeBg.fill();
+    target.textColor = badgeText.fill();
+    target.color = badgeText.fill();
+    target.fontFamily = badgeText.fontFamily();
+    target.fontWeight = badgeText.fontStyle() || 'normal';
+    target.fontSize = badgeText.fontSize();
+    target.paddingX = Math.round(toNumber(node.getAttr('paddingX'), 24));
+    target.paddingY = Math.round(toNumber(node.getAttr('paddingY'), 14));
+    target.borderRadius = Math.round(toNumber(badgeBg.cornerRadius(), 0));
+    target.radius = target.borderRadius;
+    target.autoWidth = node.getAttr('autoWidth') !== false;
+    target.opacity = node.opacity();
+    if (!next.defaults) next.defaults = {};
+    next.defaults.category = catLabel;
+    if (!next.categoryColors) next.categoryColors = {};
+    next.categoryColors[catLabel] = badgeBg.fill();
+    const normalized = normalizeCategoryKey(catLabel);
+    if (normalized && normalized !== catLabel) next.categoryColors[normalized] = badgeBg.fill();
+  }
+
+  function persistShapeLine(target, node) {
+    const visible = node.findOne('.separator-visible') || node;
+    target.width = Math.round(visible.width());
+    target.height = Math.round(visible.height());
+    target.color = visible.fill();
+    target.opacity = node.opacity();
+    target.hitHeight = SEPARATOR_HIT_HEIGHT;
+  }
+
+  function persistTextBox(next, target, key, node) {
+    target.width = Math.round(node.width());
+    target.maxWidth = Math.round(node.width());
+    target.fontFamily = node.fontFamily();
+    target.fontWeight = node.fontStyle() || 'normal';
+    target.fontSize = node.fontSize();
+    target.lineHeight = Math.round(getTextLineHeightPx(node));
+    target.color = node.fill();
+    target.opacity = node.opacity();
+    if (key === 'watermark') target.text = node.text();
+    if (key === 'title') {
+      if (!next.defaults) next.defaults = {};
+      next.defaults.title = node.text();
+    }
+    if (key === 'summary') {
+      if (!next.defaults) next.defaults = {};
+      next.defaults.summary = node.text();
+    }
+  }
+
+  function persistOverlay(target, node) {
+    target.width = Math.round(node.width());
+    target.height = Math.round(node.height());
+    target.color = node.fill();
+    target.background = node.fill();
+    target.opacity = node.opacity();
+    if (node.cornerRadius) target.borderRadius = Math.round(toNumber(node.cornerRadius(), 0));
+  }
+
+  function persistImage(target, node) {
+    target.width = Math.round(node.width());
+    target.height = Math.round(node.height());
+    target.opacity = node.opacity();
+  }
+
   async function saveFromEditor() {
     if (!templateData) return;
     const next = JSON.parse(JSON.stringify(templateData));
@@ -607,39 +945,13 @@
       const target = next.layers[key];
       target.x = Math.round(node.x());
       target.y = Math.round(node.y());
-      if (node.getClassName() === 'Text') {
-        target.fontSize = node.fontSize();
-        target.color = node.fill();
-        target.opacity = node.opacity();
-        if (key === 'watermark') target.text = node.text();
-      }
-      if (node.getClassName() === 'Rect') {
-        target.width = Math.round(node.width());
-        target.height = Math.round(node.height());
-        target.color = node.fill();
-      }
-      if (node.getClassName() === 'Group' && key === 'category') {
-        const badgeBg = node.findOne('.badge-bg');
-        const badgeText = node.findOne('.badge-text');
-        if (badgeBg) {
-          target.background = badgeBg.fill();
-          const catLabel = badgeText ? formatCategoryLabel(badgeText.text(), target) : null;
-          if (catLabel) {
-            if (!next.defaults) next.defaults = {};
-            next.defaults.category = catLabel;
-            if (!next.categoryColors) next.categoryColors = {};
-            next.categoryColors[catLabel] = badgeBg.fill();
-          }
-        }
-      }
-      if (node.getClassName() === 'Group' && key === 'separator') {
-        const separatorVisible = node.findOne('.separator-visible');
-        if (separatorVisible) {
-          target.width = Math.round(separatorVisible.width());
-          target.height = Math.round(separatorVisible.height());
-          target.color = separatorVisible.fill();
-        }
-      }
+      const componentType = getElementType(node, key);
+      target.type = componentType;
+      if (componentType === 'badge') persistBadge(next, target, node);
+      else if (componentType === 'shapeLine') persistShapeLine(target, node);
+      else if (componentType === 'textBox') persistTextBox(next, target, key, node);
+      else if (componentType === 'overlay') persistOverlay(target, node);
+      else if (componentType === 'image' || componentType === 'logo') persistImage(target, node);
     });
     try {
       const res = await fetch('/api/template', {
@@ -751,6 +1063,92 @@
     layer.batchDraw();
   }
 
+  function getComponentType(key, config) {
+    if (config && config.type) return config.type;
+    if (COMPONENT_TYPES[key]) return COMPONENT_TYPES[key];
+    if (/overlay/i.test(key)) return 'overlay';
+    if (/logo/i.test(key)) return 'logo';
+    if (config && (config.src || config.image || config.url)) return 'image';
+    if (config && typeof config.text === 'string') return 'textBox';
+    if (config && typeof config.width === 'number' && typeof config.height === 'number') return 'overlay';
+    return 'textBox';
+  }
+
+  function getElementType(node, key) {
+    return node.getAttr('componentType') || getComponentType(key, (templateData.layers || {})[key] || {});
+  }
+
+  function getElementLabel(key) {
+    const config = (templateData.layers || {})[key] || {};
+    return config.label || COMPONENT_LABELS[key] || key;
+  }
+
+  function getOrderedExtraLayerKeys(layers) {
+    const primary = new Set(PRIMARY_LAYER_KEYS);
+    return Object.keys(layers).filter(function (key) {
+      if (primary.has(key)) return false;
+      const type = getComponentType(key, layers[key]);
+      return type === 'overlay' || type === 'image' || type === 'logo';
+    });
+  }
+
+  function getFontFamily(config) {
+    return normalizeFontFamily(config?.fontFamily || DEFAULT_FONT_FAMILY);
+  }
+
+  function normalizeFontFamily(value) {
+    return String(value || DEFAULT_FONT_FAMILY).split(',')[0].trim() || DEFAULT_FONT_FAMILY;
+  }
+
+  function getKonvaLineHeight(config) {
+    const fontSize = toNumber(config?.fontSize, 16);
+    const lineHeight = toNumber(config?.lineHeight, fontSize * 1.2);
+    return lineHeight / fontSize;
+  }
+
+  function getTextLineHeightPx(node) {
+    return Math.round((node.lineHeight ? node.lineHeight() : 1.2) * node.fontSize());
+  }
+
+  function numberControl(key, prop, label, value) {
+    return '<div class="tool-group"><label>' + label + '</label><input type="number" value="' +
+      escapeHtmlAttr(Number.isFinite(value) ? value : 0) +
+      '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+
+  function textControl(key, prop, label, value) {
+    return '<div class="tool-group"><label>' + label + '</label><input type="text" value="' +
+      escapeHtmlAttr(value) +
+      '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+
+  function colorControl(key, prop, label, value) {
+    return '<div class="tool-group"><label>' + label + '</label><input type="color" value="' +
+      colorToHex(value) +
+      '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+
+  function rangeControl(key, prop, label, value) {
+    const safeValue = clamp(toNumber(value, 1), 0, 1);
+    return '<div class="tool-group"><label>' + label + ' (' + safeValue.toFixed(2) + ')</label><input type="range" min="0" max="1" step="0.05" value="' +
+      safeValue +
+      '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+
+  function checkboxControl(key, prop, label, checked) {
+    return '<div class="tool-group"><label>' + label + '</label><input type="checkbox" ' +
+      (checked ? 'checked ' : '') +
+      'onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.checked)"></div>';
+  }
+
+  function selectControl(key, prop, label, value, options) {
+    let html = '<div class="tool-group"><label>' + label + '</label><select onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">';
+    options.forEach(function (option) {
+      html += '<option value="' + escapeHtmlAttr(option) + '"' + (String(option) === String(value) ? ' selected' : '') + '>' + escapeHtmlText(option) + '</option>';
+    });
+    return html + '</select></div>';
+  }
+
   function getCategoryColor(label, categoryColors) {
     const colors = categoryColors || {};
     const exact = formatCategoryLabel(label, (templateData.layers || {}).category);
@@ -789,20 +1187,36 @@
     const badgeHit = group.findOne('.badge-hit');
     const badgeText = group.findOne('.badge-text');
     if (!badgeBg || !badgeText) return;
-    const catLayer = (templateData.layers || {}).category || {};
-    const paddingX = catLayer.paddingX || badgeText.x() || 24;
-    const height = catLayer.height || badgeBg.height() || 52;
-    const measuredWidth = Math.ceil(measureBadgeTextWidth(badgeText) + paddingX * 2);
-    const width = Math.max(MIN_BADGE_WIDTH, measuredWidth);
-    badgeBg.width(width);
+    const paddingX = toNumber(group.getAttr('paddingX'), badgeText.x() || 24);
+    const height = badgeBg.height() || Math.max(1, badgeText.fontSize() + toNumber(group.getAttr('paddingY'), 14) * 2);
+    const width = group.getAttr('autoWidth') === false
+      ? badgeBg.width()
+      : Math.max(MIN_BADGE_WIDTH, Math.ceil(measureBadgeTextWidth(badgeText) + paddingX * 2));
+    setBadgeWidth(group, width);
     badgeBg.height(height);
     badgeText.x(paddingX);
     badgeText.y((height - badgeText.fontSize()) / 2 + 2);
     if (badgeHit) {
-      badgeHit.width(width);
       badgeHit.height(height);
     }
+    group.height(height);
+  }
+
+  function setBadgeWidth(group, width) {
+    const badgeBg = group.findOne('.badge-bg');
+    const badgeHit = group.findOne('.badge-hit');
+    if (badgeBg) badgeBg.width(width);
+    if (badgeHit) badgeHit.width(width);
     group.width(width);
+  }
+
+  function setBadgeHeight(group, height) {
+    const badgeBg = group.findOne('.badge-bg');
+    const badgeHit = group.findOne('.badge-hit');
+    const badgeText = group.findOne('.badge-text');
+    if (badgeBg) badgeBg.height(height);
+    if (badgeHit) badgeHit.height(height);
+    if (badgeText) badgeText.y((height - badgeText.fontSize()) / 2 + 2);
     group.height(height);
   }
 
@@ -825,8 +1239,16 @@
     return Number.isFinite(parsed) ? parsed : fallback;
   }
 
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
   function escapeHtmlAttr(v) {
     return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function escapeHtmlText(v) {
+    return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   function colorToHex(c) {
