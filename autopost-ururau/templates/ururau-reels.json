@@ -42,6 +42,7 @@
       "fontSize": 22,
       "fontWeight": "bold",
       "fontFamily": "Aileron",
+      "letterSpacing": 0,
       "color": "#FFFFFF",
       "textColor": "#FFFFFF",
       "background": "#e63946",

@@ -14,6 +14,12 @@
   const MIN_BADGE_WIDTH = 150;
   const SEPARATOR_HIT_HEIGHT = 34;
   const DEFAULT_FONT_FAMILY = 'Aileron';
+  const REQUIRED_AILERON_FONT_QUERIES = [
+    '400 24px Aileron',
+    '700 24px Aileron',
+    'normal 24px Aileron',
+    'bold 24px Aileron'
+  ];
   const ARTICLE_IMAGE_KEY = 'articleImage';
   const COMPONENT_TYPES = {
     category: 'badge',
@@ -67,6 +73,8 @@
       showStatus('Template invalido: campo "layers" ausente.', 'error');
       return;
     }
+
+    await waitForTemplateFonts(templateData);
 
     stage = new Konva.Stage({
       container: 'konva-container',
@@ -152,7 +160,7 @@
       const badgePaddingY = toNumber(cat.paddingY, 14);
       const badgeAutoWidth = cat.autoWidth !== false;
       const badgeWidth = badgeAutoWidth
-        ? calculateBadgeWidth(catLabel, badgeFontSize, badgePaddingX)
+        ? calculateBadgeWidth(catLabel, badgeFontSize, badgePaddingX, toNumber(cat.letterSpacing, 0))
         : Math.max(1, toNumber(cat.width, MIN_BADGE_WIDTH));
       const badgeHeight = Math.max(1, toNumber(cat.height, badgeFontSize + badgePaddingY * 2));
       const badgeColor = getCategoryColor(catLabel, categoryColors);
@@ -171,7 +179,9 @@
         paddingY: badgePaddingY,
         borderRadius: toNumber(cat.borderRadius, toNumber(cat.radius, 6)),
         fontFamily: getFontFamily(cat),
-        fontWeight: cat.fontWeight || 'bold'
+        fontWeight: normalizeFontWeight(cat.fontWeight, 'bold'),
+        letterSpacing: toNumber(cat.letterSpacing, 0),
+        textTransform: normalizeTextTransform(cat.textTransform)
       });
 
       const badgeHit = new Konva.Rect({
@@ -195,7 +205,8 @@
         text: catLabel,
         fontSize: badgeFontSize,
         fontFamily: getFontFamily(cat),
-        fontStyle: cat.fontWeight || 'bold',
+        fontStyle: normalizeFontWeight(cat.fontWeight, 'bold'),
+        letterSpacing: toNumber(cat.letterSpacing, 0),
         fill: cat.textColor || cat.color || '#ffffff',
         name: 'badge-text'
       });
@@ -216,7 +227,7 @@
         text: previewTitle,
         fontSize: tit.fontSize || 60,
         fontFamily: getFontFamily(tit),
-        fontStyle: tit.fontWeight || 'bold',
+        fontStyle: normalizeFontWeight(tit.fontWeight, 'bold'),
         fill: tit.color || '#ffffff',
         width: tit.maxWidth || 970,
         lineHeight: getKonvaLineHeight(tit),
@@ -291,7 +302,7 @@
         text: previewSummary,
         fontSize: sum.fontSize || 32,
         fontFamily: getFontFamily(sum),
-        fontStyle: sum.fontWeight || 'normal',
+        fontStyle: normalizeFontWeight(sum.fontWeight, 'normal'),
         fill: sum.color || '#E0E0E0',
         width: sum.maxWidth || 970,
         lineHeight: getKonvaLineHeight(sum),
@@ -313,7 +324,7 @@
         text: wm.text || 'URURAU.COM.BR',
         fontSize: wm.fontSize || 18,
         fontFamily: getFontFamily(wm),
-        fontStyle: wm.fontWeight || 'normal',
+        fontStyle: normalizeFontWeight(wm.fontWeight, 'normal'),
         fill: wm.color || '#ffffff',
         opacity: typeof wm.opacity === 'number' ? wm.opacity : 0.5,
         draggable: true,
@@ -591,8 +602,12 @@
       '</div>' +
       textControl(key, 'fontFamily', 'Fonte', badgeText.fontFamily()) +
       '<div class="tool-row">' +
-      selectControl(key, 'fontWeight', 'Peso', badgeText.fontStyle(), ['normal', 'bold', '600', '700', '800']) +
+      selectControl(key, 'fontWeight', 'Peso', badgeText.fontStyle(), ['normal', 'bold', '400', '700']) +
+      selectControl(key, 'textTransform', 'Transformacao', node.getAttr('textTransform') || 'uppercase', ['uppercase', 'none', 'lowercase', 'capitalize']) +
+      '</div>' +
+      '<div class="tool-row">' +
       numberControl(key, 'fontSize', 'Fonte (px)', badgeText.fontSize()) +
+      numberControl(key, 'letterSpacing', 'Espacamento', badgeText.letterSpacing ? badgeText.letterSpacing() : 0) +
       '</div>' +
       '<div class="tool-row">' +
       numberControl(key, 'paddingX', 'Padding X', node.getAttr('paddingX')) +
@@ -628,7 +643,7 @@
       '</div>' +
       textControl(key, 'fontFamily', 'Fonte', node.fontFamily()) +
       '<div class="tool-row">' +
-      selectControl(key, 'fontWeight', 'Peso', node.fontStyle() || 'normal', ['normal', 'bold', '600', '700', '800']) +
+      selectControl(key, 'fontWeight', 'Peso', node.fontStyle() || 'normal', ['normal', 'bold', '400', '700']) +
       rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
       '</div>';
   }
@@ -708,7 +723,7 @@
       return;
     }
     if (prop === 'text' && badgeText) {
-      badgeText.text(formatCategoryLabel(value, (templateData.layers || {}).category));
+      badgeText.text(formatCategoryLabel(value, { textTransform: group.getAttr('textTransform') }));
       resizeBadgeToText(group);
       return;
     }
@@ -727,13 +742,27 @@
       return;
     }
     if (prop === 'fontWeight' && badgeText) {
-      badgeText.fontStyle(value || 'normal');
-      group.setAttr('fontWeight', value || 'normal');
+      const fontWeight = normalizeFontWeight(value, 'bold');
+      badgeText.fontStyle(fontWeight);
+      group.setAttr('fontWeight', fontWeight);
       resizeBadgeToText(group);
       return;
     }
     if (prop === 'fontSize' && badgeText) {
       badgeText.fontSize(Math.max(1, toNumber(value, badgeText.fontSize())));
+      resizeBadgeToText(group);
+      return;
+    }
+    if (prop === 'letterSpacing' && badgeText) {
+      badgeText.letterSpacing(toNumber(value, badgeText.letterSpacing ? badgeText.letterSpacing() : 0));
+      group.setAttr('letterSpacing', badgeText.letterSpacing ? badgeText.letterSpacing() : 0);
+      resizeBadgeToText(group);
+      return;
+    }
+    if (prop === 'textTransform' && badgeText) {
+      const textTransform = normalizeTextTransform(value);
+      group.setAttr('textTransform', textTransform);
+      badgeText.text(formatCategoryLabel(badgeText.text(), { textTransform }));
       resizeBadgeToText(group);
       return;
     }
@@ -809,7 +838,7 @@
     else if (prop === 'width') node.width(Math.max(1, toNumber(value, node.width())));
     else if (prop === 'fontSize') node.fontSize(Math.max(1, toNumber(value, node.fontSize())));
     else if (prop === 'fontFamily') node.fontFamily(normalizeFontFamily(value));
-    else if (prop === 'fontWeight') node.fontStyle(value || 'normal');
+    else if (prop === 'fontWeight') node.fontStyle(normalizeFontWeight(value, 'normal'));
     else if (prop === 'color' || prop === 'fill') node.fill(value);
     else if (prop === 'lineHeightPx') node.lineHeight(Math.max(0.1, toNumber(value, getTextLineHeightPx(node)) / node.fontSize()));
     else if (prop === 'opacity') node.opacity(clamp(toNumber(value, node.opacity()), 0, 1));
@@ -995,7 +1024,7 @@
     const badgeBg = node.findOne('.badge-bg');
     const badgeText = node.findOne('.badge-text');
     if (!badgeBg || !badgeText) return;
-    const catLabel = formatCategoryLabel(badgeText.text(), target);
+    const catLabel = formatCategoryLabel(badgeText.text(), { textTransform: node.getAttr('textTransform') });
     target.text = catLabel;
     target.width = Math.round(badgeBg.width());
     target.height = Math.round(badgeBg.height());
@@ -1005,11 +1034,13 @@
     target.fontFamily = badgeText.fontFamily();
     target.fontWeight = badgeText.fontStyle() || 'normal';
     target.fontSize = badgeText.fontSize();
+    target.letterSpacing = badgeText.letterSpacing ? badgeText.letterSpacing() : 0;
     target.paddingX = Math.round(toNumber(node.getAttr('paddingX'), 24));
     target.paddingY = Math.round(toNumber(node.getAttr('paddingY'), 14));
     target.borderRadius = Math.round(toNumber(badgeBg.cornerRadius(), 0));
     target.radius = target.borderRadius;
     target.autoWidth = node.getAttr('autoWidth') !== false;
+    target.textTransform = normalizeTextTransform(node.getAttr('textTransform'));
     target.opacity = node.opacity();
     if (!next.defaults) next.defaults = {};
     next.defaults.category = catLabel;
@@ -1230,12 +1261,45 @@
     });
   }
 
+  async function waitForTemplateFonts(template) {
+    if (!document.fonts || typeof document.fonts.load !== 'function') return;
+    const missing = [];
+    await Promise.all(REQUIRED_AILERON_FONT_QUERIES.map(async function (query) {
+      try {
+        await document.fonts.load(query);
+        if (!document.fonts.check(query)) missing.push(query);
+      } catch (err) {
+        missing.push(query);
+      }
+    }));
+    try {
+      await document.fonts.ready;
+    } catch (err) {
+      // Font readiness is best-effort; explicit checks above decide whether to warn.
+    }
+    if (missing.length) {
+      showStatus('Fonte obrigatoria Aileron nao carregada nos pesos 400/700. Verifique os arquivos OTF.', 'error');
+    }
+  }
+
   function getFontFamily(config) {
     return normalizeFontFamily(config?.fontFamily || DEFAULT_FONT_FAMILY);
   }
 
   function normalizeFontFamily(value) {
-    return String(value || DEFAULT_FONT_FAMILY).split(',')[0].trim() || DEFAULT_FONT_FAMILY;
+    const family = String(value || DEFAULT_FONT_FAMILY).split(',')[0].trim();
+    if (!family) return DEFAULT_FONT_FAMILY;
+    if (/^Aileron(Regular|Bold)?$/i.test(family)) return DEFAULT_FONT_FAMILY;
+    if (/^(Arial|Helvetica|sans-serif)$/i.test(family)) return DEFAULT_FONT_FAMILY;
+    return family;
+  }
+
+  function normalizeFontWeight(value, fallback) {
+    const weight = String(value || fallback || 'normal').trim().toLowerCase();
+    if (weight === '700') return 'bold';
+    if (weight === '400') return 'normal';
+    if (weight === 'bold' || weight === 'normal') return weight;
+    return weight || fallback || 'normal';
   }
 
   function getKonvaLineHeight(config) {
@@ -1297,8 +1361,19 @@
 
   function formatCategoryLabel(value, layerConfig) {
     const text = String(value == null ? '' : value).trim() || DEFAULT_PREVIEW.category;
-    if (layerConfig?.textTransform === 'uppercase') return text.toUpperCase();
+    const transform = normalizeTextTransform(layerConfig?.textTransform);
+    if (transform === 'uppercase') return text.toUpperCase();
+    if (transform === 'lowercase') return text.toLowerCase();
+    if (transform === 'capitalize') return text.toLowerCase().replace(/(^|\s)(\S)/g, function (_, lead, letter) {
+      return lead + letter.toUpperCase();
+    });
     return text;
+  }
+
+  function normalizeTextTransform(value) {
+    const transform = String(value || 'uppercase').trim().toLowerCase();
+    if (transform === 'none' || transform === 'lowercase' || transform === 'capitalize') return transform;
+    return 'uppercase';
   }
 
   function normalizeCategoryKey(value) {
@@ -1308,15 +1383,19 @@
       .toUpperCase();
   }
 
-  function calculateBadgeWidth(label, fontSize, paddingX) {
+  function calculateBadgeWidth(label, fontSize, paddingX, letterSpacing) {
     const approximateTextWidth = String(label || '').length * Math.max(12, fontSize * 0.62);
-    return Math.max(MIN_BADGE_WIDTH, Math.ceil(approximateTextWidth + paddingX * 2));
+    const trackingWidth = Math.max(0, String(label || '').length - 1) * toNumber(letterSpacing, 0);
+    return Math.max(MIN_BADGE_WIDTH, Math.ceil(approximateTextWidth + trackingWidth + paddingX * 2));
   }
 
   function measureBadgeTextWidth(textNode) {
     if (!textNode) return 0;
-    if (typeof textNode.getTextWidth === 'function') return textNode.getTextWidth();
-    return textNode.width();
+    const text = textNode.text ? textNode.text() : '';
+    const letterSpacing = textNode.letterSpacing ? textNode.letterSpacing() : 0;
+    const trackingWidth = Math.max(0, String(text || '').length - 1) * toNumber(letterSpacing, 0);
+    if (typeof textNode.getTextWidth === 'function') return textNode.getTextWidth() + trackingWidth;
+    return textNode.width() + trackingWidth;
   }
 
   function resizeBadgeToText(group) {
