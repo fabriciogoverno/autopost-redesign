@@ -37,6 +37,7 @@
   const MIN_BADGE_WIDTH = 150;
   const SEPARATOR_HIT_HEIGHT = 34;
   const DEFAULT_FONT_FAMILY = 'Aileron';
+  const URURAU_OFFICIAL_RED = '#af0014';
   const REQUIRED_AILERON_FONT_QUERIES = [
     '400 24px Aileron',
     '700 24px Aileron'
@@ -44,8 +45,8 @@
   const TEMPLATE_BASE_URL = '/assets/template-base.png';
 
   const FALLBACK_CATEGORY_COLORS = {
-    OPINIAO: '#e63946', POLITICA: '#1d3557', ESPORTE: '#2a9d8f',
-    SEGURANCA: '#e9c46a', ECONOMIA: '#f4a261', GERAL: '#6c757d'
+    OPINIAO: URURAU_OFFICIAL_RED, POLITICA: URURAU_OFFICIAL_RED, ESPORTE: URURAU_OFFICIAL_RED,
+    SEGURANCA: URURAU_OFFICIAL_RED, ECONOMIA: URURAU_OFFICIAL_RED, GERAL: URURAU_OFFICIAL_RED
   };
 
   const DEFAULT_PREVIEW = {
@@ -220,7 +221,7 @@
     // Garante presenca das camadas obrigatorias mesmo se o JSON antigo nao tiver
     ensureLayer('blackBackground', { type: 'shape', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, color: '#000000', opacity: 1, visible: true, locked: true, deletable: false, zIndex: 0 });
     ensureLayer('articleImage', { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, src: '', fitMode: 'cover', objectFit: 'cover', opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
-    ensureLayer('lockedHeader', { type: 'lockedImage', x: 0, y: 0, width: CANVAS_WIDTH, height: 260, src: TEMPLATE_BASE_URL, crop: { x: 0, y: 0, width: CANVAS_WIDTH, height: 260 }, opacity: 1, visible: true, locked: true, deletable: false, zIndex: 90 });
+    ensureLayer('lockedHeader', { type: 'lockedImage', x: 0, y: 0, width: CANVAS_WIDTH, height: 260, src: TEMPLATE_BASE_URL, crop: { x: 0, y: 0, width: CANVAS_WIDTH, height: 260 }, opacity: 1, visible: true, locked: true, deletable: false, zIndex: 90, shadow: defaultHeaderShadow(), outline: defaultHeaderOutline() });
 
     // Cria cada layer no Konva. Aguarda imagens.
     const keys = Object.keys(templateData.layers);
@@ -342,6 +343,7 @@
           id: key
         });
         node.setAttr('componentType', 'lockedImage');
+        applyLockedHeaderEffects(node, config, key);
         if (config.crop && key !== 'lockedHeader') {
           node.crop({
             x: numOr(config.crop.x, 0),
@@ -510,9 +512,9 @@
     const paddingY = numOr(cat.paddingY, 14);
     const autoWidth = cat.autoWidth !== false;
     const badgeHeight = Math.max(1, numOr(cat.height, fontSize + paddingY * 2));
-    // Resolve cor do badge: 1) cat.background explicito 2) categoryStyles 3) fallback
+    // Resolve cor do badge: 1) categoryStyles 2) fallback vermelho oficial.
     const resolvedStyle = resolveCategoryStyle(catLabel);
-    const badgeColor = isHexColor(cat.background) ? cat.background : resolvedStyle.background;
+    const badgeColor = resolvedStyle.background || (isHexColor(cat.background) ? cat.background : URURAU_OFFICIAL_RED);
     const textColor = cat.textColor || cat.color || resolvedStyle.textColor || '#FFFFFF';
 
     const group = new Konva.Group({
@@ -1618,6 +1620,62 @@
     target.opacity = node.opacity();
     const src = node.getAttr('src') || TEMPLATE_BASE_URL;
     target.src = src;
+    const shadow = node.getAttr('headerShadow');
+    const outline = node.getAttr('headerOutline');
+    if (shadow) target.shadow = shadow;
+    if (outline) target.outline = outline;
+  }
+
+  function defaultHeaderShadow() {
+    return {
+      color: 'rgba(0,0,0,0.72)',
+      blur: 16,
+      offsetX: 0,
+      offsetY: 7,
+      opacity: 0.52
+    };
+  }
+
+  function defaultHeaderOutline() {
+    return {
+      color: '#000000',
+      width: 0.9,
+      opacity: 0.7
+    };
+  }
+
+  function applyLockedHeaderEffects(node, config, key) {
+    if (key !== 'lockedHeader' || !node) return;
+    const shadow = normalizeHeaderShadow(config.shadow);
+    const outline = normalizeHeaderOutline(config.outline);
+    node.shadowColor(shadow.color);
+    node.shadowBlur(shadow.blur);
+    node.shadowOffset({ x: shadow.offsetX, y: shadow.offsetY });
+    node.shadowOpacity(shadow.opacity);
+    node.setAttr('headerShadow', shadow);
+    node.setAttr('headerOutline', outline);
+  }
+
+  function normalizeHeaderShadow(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const fallback = defaultHeaderShadow();
+    return {
+      color: String(source.color || fallback.color),
+      blur: Math.max(0, numOr(source.blur, fallback.blur)),
+      offsetX: numOr(source.offsetX, fallback.offsetX),
+      offsetY: numOr(source.offsetY, fallback.offsetY),
+      opacity: clamp01(numOr(source.opacity, fallback.opacity))
+    };
+  }
+
+  function normalizeHeaderOutline(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const fallback = defaultHeaderOutline();
+    return {
+      color: String(source.color || fallback.color),
+      width: Math.max(0, numOr(source.width, fallback.width)),
+      opacity: clamp01(numOr(source.opacity, fallback.opacity))
+    };
   }
 
   function buildTemplateSnapshot(includeArticleSrc) {
@@ -1935,7 +1993,7 @@
     const c = colors || {};
     const exact = formatCategoryLabel(label, (templateData.layers || {}).category);
     const normalized = normalizeCategoryKey(exact);
-    return c[exact] || c[normalized] || c.GERAL || FALLBACK_CATEGORY_COLORS[normalized] || FALLBACK_CATEGORY_COLORS.GERAL;
+    return c[exact] || c[normalized] || c.GERAL || FALLBACK_CATEGORY_COLORS[normalized] || URURAU_OFFICIAL_RED;
   }
 
   // Resolve um par {background, textColor} a partir de templateData.categoryStyles.
@@ -1948,7 +2006,7 @@
     const style = styles[cat] || styles[normalized] || styles.GERAL;
     if (style && (style.background || style.textColor)) {
       return {
-        background: style.background || colors[cat] || colors[normalized] || '#6c757d',
+        background: style.background || colors[cat] || colors[normalized] || URURAU_OFFICIAL_RED,
         textColor: style.textColor || '#FFFFFF'
       };
     }

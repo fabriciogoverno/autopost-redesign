@@ -11,6 +11,7 @@ const TEMPLATE_FILE = join(TEMPLATES_DIR, `${TEMPLATE_ID}.json`);
 const TEMPLATE_DEFAULT_FILE = join(TEMPLATES_DIR, `${TEMPLATE_ID}.default.json`);
 const BACKUPS_DIR = join(TEMPLATES_DIR, 'backups');
 const TEMPLATE_BASE_FILE = join(TEMPLATES_DIR, 'assets', 'template-base.png');
+const URURAU_OFFICIAL_RED = '#af0014';
 
 export function loadTemplate(templateId = TEMPLATE_ID) {
   const templatePath = join(TEMPLATES_DIR, `${templateId}.json`);
@@ -51,6 +52,17 @@ export function migrateTemplate(template) {
       t.categoryColors[k] = v.background;
     }
   }
+  t.categoryStyles = {
+    ...(t.categoryStyles || {}),
+    GERAL: {
+      background: (t.categoryStyles && t.categoryStyles.GERAL && t.categoryStyles.GERAL.background) || URURAU_OFFICIAL_RED,
+      textColor: (t.categoryStyles && t.categoryStyles.GERAL && t.categoryStyles.GERAL.textColor) || '#FFFFFF'
+    }
+  };
+  t.categoryColors = {
+    ...(t.categoryColors || {}),
+    GERAL: (t.categoryColors && t.categoryColors.GERAL) || t.categoryStyles.GERAL.background || URURAU_OFFICIAL_RED
+  };
 
   // 2. canvas a partir de source
   if (!t.canvas && t.source?.width && t.source?.height) {
@@ -104,6 +116,20 @@ export function migrateTemplate(template) {
       }
       if (typeof layer.opacity !== 'number') layer.opacity = 1;
       if (typeof layer.rotation !== 'number') layer.rotation = 0;
+      if (key === 'lockedHeader') {
+        layer.shadow = {
+          color: layer.shadow?.color || 'rgba(0,0,0,0.72)',
+          blur: typeof layer.shadow?.blur === 'number' ? layer.shadow.blur : 16,
+          offsetX: typeof layer.shadow?.offsetX === 'number' ? layer.shadow.offsetX : 0,
+          offsetY: typeof layer.shadow?.offsetY === 'number' ? layer.shadow.offsetY : 7,
+          opacity: typeof layer.shadow?.opacity === 'number' ? layer.shadow.opacity : 0.52
+        };
+        layer.outline = {
+          color: layer.outline?.color || '#000000',
+          width: typeof layer.outline?.width === 'number' ? layer.outline.width : 0.9,
+          opacity: typeof layer.outline?.opacity === 'number' ? layer.outline.opacity : 0.7
+        };
+      }
     }
   }
 

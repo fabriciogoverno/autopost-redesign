@@ -15,7 +15,10 @@
   },
   "fonts": {
     "family": "Aileron",
-    "weights": [400, 700],
+    "weights": [
+      400,
+      700
+    ],
     "files": {
       "400": "/assets/fonts/aileron/AileronRegular.otf",
       "700": "/assets/fonts/aileron/AileronBold.otf"
@@ -35,22 +38,53 @@
     "tamanho final 1080 x 1920"
   ],
   "categoryStyles": {
-    "OPINIÃO":   { "background": "#af0014", "textColor": "#FFFFFF" },
-    "OPINIAO":   { "background": "#af0014", "textColor": "#FFFFFF" },
-    "POLITICA":  { "background": "#1d3557", "textColor": "#FFFFFF" },
-    "ESPORTE":   { "background": "#2a9d8f", "textColor": "#FFFFFF" },
-    "SEGURANCA": { "background": "#e9c46a", "textColor": "#1a1a1a" },
-    "ECONOMIA":  { "background": "#f4a261", "textColor": "#1a1a1a" },
-    "GERAL":     { "background": "#6c757d", "textColor": "#FFFFFF" }
+    "OPINIÃO": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "OPINIAO": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "POLITICA": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "ESPORTE": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "SEGURANCA": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "ECONOMIA": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "GERAL": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "POLÍTICA": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "CIDADES": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    }
   },
   "categoryColors": {
-    "OPINIÃO":   "#af0014",
-    "OPINIAO":   "#af0014",
-    "POLITICA":  "#1d3557",
-    "ESPORTE":   "#2a9d8f",
-    "SEGURANCA": "#e9c46a",
-    "ECONOMIA":  "#f4a261",
-    "GERAL":     "#6c757d"
+    "OPINIÃO": "#af0014",
+    "OPINIAO": "#af0014",
+    "POLITICA": "#af0014",
+    "ESPORTE": "#af0014",
+    "SEGURANCA": "#af0014",
+    "ECONOMIA": "#af0014",
+    "GERAL": "#af0014",
+    "POLÍTICA": "#af0014",
+    "CIDADES": "#af0014"
   },
   "bindings": {
     "category": "article.category",
@@ -100,15 +134,24 @@
       "id": "bottomGradient",
       "type": "gradientOverlay",
       "label": "Gradiente Inferior",
-      "x": 0,
-      "y": 850,
-      "width": 1080,
+      "x": -51,
+      "y": 876,
+      "width": 1162,
       "height": 1070,
       "angle": 90,
       "colorStops": [
-        { "offset": 0,    "color": "rgba(0,0,0,0)" },
-        { "offset": 0.35, "color": "rgba(0,0,0,0.7)" },
-        { "offset": 1,    "color": "rgba(0,0,0,1)" }
+        {
+          "offset": 0,
+          "color": "rgba(0,0,0,0)"
+        },
+        {
+          "offset": 0.35,
+          "color": "rgba(0,0,0,0.7)"
+        },
+        {
+          "offset": 1,
+          "color": "rgba(0,0,0,1)"
+        }
       ],
       "opacity": 1,
       "rotation": 0,
@@ -124,7 +167,7 @@
       "editable": true,
       "x": 67,
       "y": 1174,
-      "width": 236,
+      "width": 244,
       "height": 85,
       "autoWidth": true,
       "fontSize": 45,
@@ -139,7 +182,7 @@
       "paddingX": 24,
       "paddingY": 14,
       "textTransform": "uppercase",
-      "text": "OPINIÃO",
+      "text": "CIDADES",
       "opacity": 1,
       "rotation": 0,
       "visible": true,
@@ -155,9 +198,9 @@
       "editable": true,
       "x": 68,
       "y": 1284,
-      "width": 760,
+      "width": 834,
       "height": 320,
-      "maxWidth": 760,
+      "maxWidth": 834,
       "fontFamily": "Aileron",
       "fontSize": 65,
       "fontWeight": "bold",
@@ -175,7 +218,8 @@
       "locked": false,
       "deletable": false,
       "zIndex": 50,
-      "binding": "article.title"
+      "binding": "article.title",
+      "text": "Prefeitura de Campos entrega kits do Mãe Coruja para gestantes nesta terça-feira"
     },
     "separator": {
       "id": "separator",
@@ -183,9 +227,9 @@
       "label": "Linha Decorativa",
       "editable": true,
       "x": 75,
-      "y": 1624,
+      "y": 1618,
       "width": 220,
-      "height": 5,
+      "height": 10,
       "color": "#c11f25",
       "radius": 2,
       "hitHeight": 34,
@@ -207,8 +251,8 @@
       "width": 760,
       "height": 200,
       "maxWidth": 760,
-      "fontSize": 34,
-      "lineHeight": 49,
+      "fontSize": 39,
+      "lineHeight": 56,
       "letterSpacing": 0,
       "fontFamily": "Aileron",
       "fontWeight": "normal",
@@ -225,7 +269,8 @@
       "locked": false,
       "deletable": false,
       "zIndex": 60,
-      "binding": "article.summary"
+      "binding": "article.summary",
+      "text": "Campos entrega kits do Mãe Coruja para gestantes em ação social no Centro"
     },
     "lockedHeader": {
       "id": "lockedHeader",
@@ -236,13 +281,30 @@
       "width": 1080,
       "height": 260,
       "src": "/assets/template-base.png",
-      "crop": { "x": 0, "y": 0, "width": 1080, "height": 260 },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 260
+      },
       "opacity": 1,
       "rotation": 0,
       "visible": true,
       "locked": true,
       "deletable": false,
-      "zIndex": 90
+      "zIndex": 90,
+      "shadow": {
+        "color": "rgba(0,0,0,0.72)",
+        "blur": 16,
+        "offsetX": 0,
+        "offsetY": 7,
+        "opacity": 0.52
+      },
+      "outline": {
+        "color": "#000000",
+        "width": 0.9,
+        "opacity": 0.7
+      }
     },
     "watermark": {
       "id": "watermark",
@@ -265,7 +327,7 @@
       "padding": 0,
       "opacity": 0.5,
       "rotation": 0,
-      "text": "URURAU.COM.BR",
+      "text": "",
       "lineHeight": 18,
       "visible": true,
       "locked": false,
@@ -274,8 +336,8 @@
     }
   },
   "defaults": {
-    "category": "OPINIÃO",
-    "title": "Prefeitura do Rio: selo Diamante e caixa-preta de 126 milhões em publicidade",
-    "summary": "Gestão Paes reservou R$ 126 milhões em publicidade, mais que a economia dos cortes no Estado, mas não revela o destino final do dinheiro"
+    "category": "CIDADES",
+    "title": "Prefeitura de Campos entrega kits do Mãe Coruja para gestantes nesta terça-feira",
+    "summary": "Campos entrega kits do Mãe Coruja para gestantes em ação social no Centro"
   }
 }

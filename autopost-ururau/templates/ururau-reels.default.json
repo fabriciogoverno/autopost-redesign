@@ -15,7 +15,10 @@
   },
   "fonts": {
     "family": "Aileron",
-    "weights": [400, 700],
+    "weights": [
+      400,
+      700
+    ],
     "files": {
       "400": "/assets/fonts/aileron/AileronRegular.otf",
       "700": "/assets/fonts/aileron/AileronBold.otf"
@@ -35,22 +38,53 @@
     "tamanho final 1080 x 1920"
   ],
   "categoryStyles": {
-    "OPINIÃO":   { "background": "#af0014", "textColor": "#FFFFFF" },
-    "OPINIAO":   { "background": "#af0014", "textColor": "#FFFFFF" },
-    "POLITICA":  { "background": "#1d3557", "textColor": "#FFFFFF" },
-    "ESPORTE":   { "background": "#2a9d8f", "textColor": "#FFFFFF" },
-    "SEGURANCA": { "background": "#e9c46a", "textColor": "#1a1a1a" },
-    "ECONOMIA":  { "background": "#f4a261", "textColor": "#1a1a1a" },
-    "GERAL":     { "background": "#6c757d", "textColor": "#FFFFFF" }
+    "OPINIÃO": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "OPINIAO": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "POLITICA": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "ESPORTE": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "SEGURANCA": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "ECONOMIA": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "GERAL": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "POLÍTICA": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    },
+    "CIDADES": {
+      "background": "#af0014",
+      "textColor": "#FFFFFF"
+    }
   },
   "categoryColors": {
-    "OPINIÃO":   "#af0014",
-    "OPINIAO":   "#af0014",
-    "POLITICA":  "#1d3557",
-    "ESPORTE":   "#2a9d8f",
-    "SEGURANCA": "#e9c46a",
-    "ECONOMIA":  "#f4a261",
-    "GERAL":     "#6c757d"
+    "OPINIÃO": "#af0014",
+    "OPINIAO": "#af0014",
+    "POLITICA": "#af0014",
+    "ESPORTE": "#af0014",
+    "SEGURANCA": "#af0014",
+    "ECONOMIA": "#af0014",
+    "GERAL": "#af0014",
+    "POLÍTICA": "#af0014",
+    "CIDADES": "#af0014"
   },
   "bindings": {
     "category": "article.category",
@@ -106,9 +140,18 @@
       "height": 1070,
       "angle": 90,
       "colorStops": [
-        { "offset": 0,    "color": "rgba(0,0,0,0)" },
-        { "offset": 0.35, "color": "rgba(0,0,0,0.7)" },
-        { "offset": 1,    "color": "rgba(0,0,0,1)" }
+        {
+          "offset": 0,
+          "color": "rgba(0,0,0,0)"
+        },
+        {
+          "offset": 0.35,
+          "color": "rgba(0,0,0,0.7)"
+        },
+        {
+          "offset": 1,
+          "color": "rgba(0,0,0,1)"
+        }
       ],
       "opacity": 1,
       "rotation": 0,
@@ -236,13 +279,30 @@
       "width": 1080,
       "height": 260,
       "src": "/assets/template-base.png",
-      "crop": { "x": 0, "y": 0, "width": 1080, "height": 260 },
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1080,
+        "height": 260
+      },
       "opacity": 1,
       "rotation": 0,
       "visible": true,
       "locked": true,
       "deletable": false,
-      "zIndex": 90
+      "zIndex": 90,
+      "shadow": {
+        "color": "rgba(0,0,0,0.72)",
+        "blur": 16,
+        "offsetX": 0,
+        "offsetY": 7,
+        "opacity": 0.52
+      },
+      "outline": {
+        "color": "#000000",
+        "width": 0.9,
+        "opacity": 0.7
+      }
     },
     "watermark": {
       "id": "watermark",

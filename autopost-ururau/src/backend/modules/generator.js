@@ -20,6 +20,7 @@ const __dirname = dirname(__filename);
 const OUTPUT_DIR = join(process.cwd(), 'output', 'artes');
 const DASHBOARD_PUBLIC_DIR = join(__dirname, '../../dashboard/public');
 const AILERON_FONT_DIR = join(DASHBOARD_PUBLIC_DIR, 'assets', 'fonts', 'aileron');
+const URURAU_OFFICIAL_RED = '#af0014';
 
 /**
  * Classe principal do gerador de artes
@@ -482,7 +483,7 @@ ${this.getAileronFontFaceCss()}
         const styleByCategory = styles[category] || styles[normalized];
         const background = (styleByCategory && styleByCategory.background)
             || layer.background
-            || colors[category] || colors[normalized] || colors.GERAL || '#6c757d';
+            || colors[category] || colors[normalized] || colors.GERAL || URURAU_OFFICIAL_RED;
         const textColor = (styleByCategory && styleByCategory.textColor)
             || layer.textColor || layer.color
             || '#fff';
@@ -572,7 +573,7 @@ ${this.getAileronFontFaceCss()}
                         .toBuffer({ resolveWithObject: true });
                     const buffer = await this.blackToTransparentPng(extracted.data, extracted.info);
                     const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
-                    return `<image data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${targetWidth}" height="${targetHeight}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="none" opacity="${opacity}"/>`;
+                    return this.renderLockedHeaderImage(key, dataUrl, x, y, targetWidth, targetHeight, opacity, layer);
                 }
             }
         } catch (err) {
@@ -660,7 +661,29 @@ ${this.getAileronFontFaceCss()}
             .png()
             .toBuffer();
         const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
-        return `<image data-layer="lockedHeader" x="0" y="0" width="${canvasWidth}" height="${sourceHeight}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="none" opacity="1"/>`;
+        return this.renderLockedHeaderImage('lockedHeader', dataUrl, 0, 0, canvasWidth, sourceHeight, 1, {});
+    }
+
+    renderLockedHeaderImage(key, dataUrl, x, y, width, height, opacity, layer = {}) {
+        const filterId = `${this.escapeXmlAttr(key)}_headerFx`;
+        const shadow = this.normalizeHeaderShadow(layer.shadow);
+        const outline = this.normalizeHeaderOutline(layer.outline);
+        return `<g data-layer="${this.escapeXmlAttr(key)}" opacity="${opacity}">
+            <defs>
+              <filter id="${filterId}" x="-8%" y="-18%" width="116%" height="150%" color-interpolation-filters="sRGB">
+                <feMorphology in="SourceAlpha" operator="dilate" radius="${outline.width}" result="outlineAlpha"/>
+                <feFlood flood-color="${this.escapeXmlAttr(outline.color)}" flood-opacity="${outline.opacity}" result="outlineColor"/>
+                <feComposite in="outlineColor" in2="outlineAlpha" operator="in" result="outline"/>
+                <feDropShadow dx="${shadow.offsetX}" dy="${shadow.offsetY}" stdDeviation="${shadow.blur / 2}" flood-color="${this.escapeXmlAttr(shadow.color)}" flood-opacity="${shadow.opacity}" result="softShadow"/>
+                <feMerge>
+                  <feMergeNode in="softShadow"/>
+                  <feMergeNode in="outline"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <image x="${x}" y="${y}" width="${width}" height="${height}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="none" filter="url(#${filterId})"/>
+          </g>`;
     }
 
     getLayerEntriesByType(layers = {}, types = []) {
@@ -747,6 +770,46 @@ ${this.getAileronFontFaceCss()}
         if (weight === '700' || weight === 'bold') return '700';
         if (weight === '400' || weight === 'normal') return '400';
         return weight || '400';
+    }
+
+    defaultHeaderShadow() {
+        return {
+            color: 'rgba(0,0,0,0.72)',
+            blur: 16,
+            offsetX: 0,
+            offsetY: 7,
+            opacity: 0.52
+        };
+    }
+
+    defaultHeaderOutline() {
+        return {
+            color: '#000000',
+            width: 0.9,
+            opacity: 0.7
+        };
+    }
+
+    normalizeHeaderShadow(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const fallback = this.defaultHeaderShadow();
+        return {
+            color: String(source.color || fallback.color),
+            blur: Math.max(0, this.numberValue(source.blur, fallback.blur)),
+            offsetX: this.numberValue(source.offsetX, fallback.offsetX),
+            offsetY: this.numberValue(source.offsetY, fallback.offsetY),
+            opacity: this.opacityValue(source.opacity, fallback.opacity)
+        };
+    }
+
+    normalizeHeaderOutline(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const fallback = this.defaultHeaderOutline();
+        return {
+            color: String(source.color || fallback.color),
+            width: Math.max(0, this.numberValue(source.width, fallback.width)),
+            opacity: this.opacityValue(source.opacity, fallback.opacity)
+        };
     }
 
     getAileronFontFaceCss() {
