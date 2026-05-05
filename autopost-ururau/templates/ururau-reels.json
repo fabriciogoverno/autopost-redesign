@@ -1,6 +1,6 @@
 {
   "name": "Ururau Reels Canva",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "source": {
     "type": "canva",
     "designId": "DAHIBnrQXjM",
@@ -10,14 +10,13 @@
   "base": {
     "image": "public/assets/template-base.png",
     "locked": true,
-    "description": "PNG exportado do Canva. Contem logo ururau, 19 ANOS, icone U, overlay, watermark, badge fixo, linha decorativa. NAO EDITAR."
+    "description": "PNG exportado do Canva. Usado como overlay LOCKED HEADER (logo ururau, 19 ANOS, icone U) e LOCKED FOOTER (watermark/elementos do Canva). NAO EDITAR."
   },
   "lockedElements": [
     "logo ururau",
     "selo 19 anos",
     "icone U",
-    "fundo base",
-    "gradiente principal",
+    "fundo preto",
     "tamanho final 1080 x 1920"
   ],
   "categoryColors": {
@@ -30,10 +29,58 @@
     "GERAL": "#6c757d"
   },
   "layers": {
+    "blackBackground": {
+      "id": "blackBackground",
+      "type": "shape",
+      "label": "Fundo Preto",
+      "x": 0,
+      "y": 0,
+      "width": 1080,
+      "height": 1920,
+      "color": "#000000",
+      "background": "#000000",
+      "opacity": 1,
+      "visible": true,
+      "locked": true,
+      "deletable": false,
+      "zIndex": 0
+    },
+    "articleImage": {
+      "id": "articleImage",
+      "type": "image",
+      "label": "Imagem da Materia",
+      "x": 0,
+      "y": 0,
+      "width": 1080,
+      "height": 1100,
+      "src": "",
+      "opacity": 1,
+      "visible": true,
+      "locked": false,
+      "deletable": true,
+      "zIndex": 10
+    },
+    "bottomGradient": {
+      "id": "bottomGradient",
+      "type": "overlay",
+      "label": "Gradiente Inferior",
+      "x": 0,
+      "y": 950,
+      "width": 1080,
+      "height": 970,
+      "color": "#050510",
+      "background": "#050510",
+      "opacity": 0.85,
+      "visible": true,
+      "locked": false,
+      "deletable": true,
+      "zIndex": 20
+    },
     "category": {
+      "id": "category",
       "type": "badge",
-      "editable": true,
       "label": "Badge Categoria",
+      "editable": true,
       "x": 67,
       "y": 1174,
       "width": 236,
@@ -52,14 +99,20 @@
       "paddingY": 14,
       "textTransform": "uppercase",
       "text": "OPINIÃO",
-      "opacity": 1
+      "opacity": 1,
+      "visible": true,
+      "locked": false,
+      "deletable": false,
+      "zIndex": 40
     },
     "title": {
+      "id": "title",
       "type": "textBox",
-      "editable": true,
       "label": "Titulo",
+      "editable": true,
       "x": 68,
       "y": 1284,
+      "width": 760,
       "maxWidth": 760,
       "fontFamily": "Aileron",
       "fontSize": 65,
@@ -68,12 +121,16 @@
       "color": "#FFFFFF",
       "maxCharsPerLine": 22,
       "opacity": 1,
-      "width": 760
+      "visible": true,
+      "locked": false,
+      "deletable": false,
+      "zIndex": 50
     },
     "separator": {
+      "id": "separator",
       "type": "shapeLine",
-      "editable": true,
       "label": "Linha Decorativa",
+      "editable": true,
       "x": 75,
       "y": 1624,
       "width": 220,
@@ -82,14 +139,21 @@
       "radius": 2,
       "hitHeight": 34,
       "marginTopAfterTitle": 18,
-      "opacity": 1
+      "opacity": 1,
+      "visible": true,
+      "locked": false,
+      "deletable": false,
+      "zIndex": 55
     },
     "summary": {
+      "id": "summary",
       "type": "textBox",
-      "editable": true,
       "label": "Subtitulo / Resumo",
+      "editable": true,
       "x": 70,
       "y": 1663,
+      "width": 760,
+      "maxWidth": 760,
       "fontSize": 34,
       "lineHeight": 49,
       "fontFamily": "Aileron",
@@ -98,24 +162,47 @@
       "maxCharsPerLine": 36,
       "marginTopAfterLine": 35,
       "opacity": 1,
-      "width": 760,
-      "maxWidth": 760
+      "visible": true,
+      "locked": false,
+      "deletable": false,
+      "zIndex": 60
+    },
+    "lockedHeader": {
+      "id": "lockedHeader",
+      "type": "lockedImage",
+      "label": "Cabecalho (logo + 19 anos + U)",
+      "x": 0,
+      "y": 0,
+      "width": 1080,
+      "height": 260,
+      "src": "/assets/template-base.png",
+      "crop": { "x": 0, "y": 0, "width": 1080, "height": 260 },
+      "opacity": 1,
+      "visible": true,
+      "locked": true,
+      "deletable": false,
+      "zIndex": 90
     },
     "watermark": {
+      "id": "watermark",
       "type": "textBox",
-      "editable": true,
       "label": "Watermark",
-      "x": -585,
-      "y": 1785,
+      "editable": true,
+      "x": 55,
+      "y": 1880,
+      "width": 200,
+      "maxWidth": 200,
       "fontFamily": "Aileron",
       "fontWeight": "normal",
       "fontSize": 18,
       "color": "#FFFFFF",
       "opacity": 0.5,
       "text": "URURAU.COM.BR",
-      "width": 142,
-      "maxWidth": 142,
-      "lineHeight": 18
+      "lineHeight": 18,
+      "visible": true,
+      "locked": false,
+      "deletable": false,
+      "zIndex": 100
     }
   },
   "defaults": {

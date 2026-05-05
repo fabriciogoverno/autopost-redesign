@@ -97,18 +97,36 @@
     .btn-editor.secondary:hover { border-color: #E63946; color: #E63946; }
     .element-list { display: flex; flex-direction: column; gap: 6px; }
     .element-item {
-      padding: 9px 11px;
+      padding: 8px 10px;
       background: rgba(255,255,255,0.03);
       border-radius: 8px;
       cursor: pointer;
       font-size: 12px;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
+      gap: 6px;
       border: 2px solid transparent;
     }
     .element-item:hover { background: rgba(230,57,70,0.08); }
     .element-item.active { border-color: #E63946; background: rgba(230,57,70,0.12); }
+    .element-item.dim { opacity: 0.5; }
+    .element-item .el-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .element-item .el-name { font-weight: 600; color: #fff; }
+    .element-item .el-meta { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .element-item .el-actions { display: flex; gap: 3px; flex-wrap: wrap; }
+    .element-item .el-actions button {
+      flex: 1;
+      min-width: 26px;
+      padding: 4px 5px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid #1a1a3a;
+      color: #ddd;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.15s;
+    }
+    .element-item .el-actions button:hover { background: #E63946; color: #fff; border-color: #E63946; }
     .element-type { font-size: 10px; color: #a0a0b0; text-transform: uppercase; }
     .keyboard-hint { font-size: 11px; color: #666; margin-top: 12px; line-height: 1.5; }
     .scale-control { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -141,8 +159,11 @@
         <span id="scaleValue">45%</span>
       </div>
 
-      <h3>Elementos</h3>
+      <h3>Camadas</h3>
       <div class="element-list" id="elementList"></div>
+      <div class="keyboard-hint" style="margin-top:6px">
+        ↑↓ subir/descer · ⇈⇊ frente/tras · 👁 visivel · 🔒/🔓 lock · 🗑 apagar
+      </div>
 
       <h3 style="margin-top:18px">Propriedades</h3>
       <div id="propertiesPanel">

@@ -353,68 +353,172 @@ class ArtGenerator {
     }
 
     async buildLayerTemplateSvg(template, data, width, height) {
-        const l = template.layers || {};
-        const categoryLayer = l.category || {};
-        const titleLayer = l.title || {};
-        const summaryLayer = l.summary || {};
-        const separatorLayer = l.separator || {};
-        const watermarkLayer = l.watermark || {};
-        const articleLayer = l.articleImage || {};
-        const articleSource = articleLayer.src || articleLayer.image || articleLayer.url || data.imageUrl || '';
+        // Ordena layers por zIndex (asc) e respeita visible !== false.
+        // Cada tipo e' renderizado por seu helper especifico para SVG.
+        // articleImage usa data.imageUrl como fallback se nao houver src.
+        const layers = template.layers || {};
+        const ordered = Object.entries(layers)
+            .filter(([, layer]) => layer && layer.visible !== false)
+            .map(([key, layer]) => ({
+                key,
+                layer,
+                zIndex: typeof layer.zIndex === 'number' ? layer.zIndex : this.defaultZIndexFor(key, layer)
+            }))
+            .sort((a, b) => a.zIndex - b.zIndex);
 
-        const category = this.applyTextTransform(data.category || categoryLayer.text || 'GERAL', categoryLayer.textTransform || 'uppercase');
-        const normalizedCategory = this.normalizeCategoryKey(category);
-        const color = categoryLayer.background || template.categoryColors?.[category] ||
-            template.categoryColors?.[normalizedCategory] || template.categoryColors?.GERAL || '#6c757d';
-
-        const categoryX = this.numberValue(categoryLayer.x, 55);
-        const categoryY = this.numberValue(categoryLayer.y, 1100);
-        const categoryFontSize = this.numberValue(categoryLayer.fontSize, 22);
-        const categoryPaddingX = this.numberValue(categoryLayer.paddingX, 24);
-        const categoryHeight = this.numberValue(categoryLayer.height, 52);
-        const categoryLetterSpacing = this.numberValue(categoryLayer.letterSpacing, 0);
-        const categoryWidth = categoryLayer.autoWidth === false
-            ? this.numberValue(categoryLayer.width, 150)
-            : this.calculateBadgeWidth(category, categoryFontSize, categoryPaddingX, categoryLetterSpacing);
-
-        const titleX = this.numberValue(titleLayer.x, 55);
-        const summaryX = this.numberValue(summaryLayer.x, 55);
-        const titleLines = this.wrapMultiline(data.title || '', titleLayer.maxWidth || titleLayer.width || 970, titleLayer.fontSize || 60, 4);
-        const summaryLines = this.wrapMultiline(data.summary || '', summaryLayer.maxWidth || summaryLayer.width || 970, summaryLayer.fontSize || 32, 5);
-        const titleText = titleLines.map((line, i) => `<tspan x="${titleX}" dy="${i === 0 ? 0 : (titleLayer.lineHeight || 72)}">${this.escapeXml(line)}</tspan>`).join('');
-        const summaryText = summaryLines.map((line, i) => `<tspan x="${summaryX}" dy="${i === 0 ? 0 : (summaryLayer.lineHeight || 46)}">${this.escapeXml(line)}</tspan>`).join('');
-        const articleImageSvg = articleSource
-            ? await this.renderSvgImageLayer(articleLayer, articleSource, width, height, { width, height, opacity: 0.92 }, 'articleImage')
-            : '';
-        const overlaySvg = this.getLayerEntriesByType(l, ['overlay'])
-            .map(([key, layer]) => this.renderOverlaySvg(key, layer))
-            .join('');
-        const floatingImageEntries = this.getLayerEntriesByType(l, ['image', 'logo'])
-            .filter(([key]) => key !== 'articleImage');
-        const floatingImageSvg = (await Promise.all(floatingImageEntries
-            .map(([key, layer]) => this.renderSvgImageLayer(layer, layer.src || layer.image || layer.url, width, height, {}, key))))
-            .join('');
-        const lockedHeaderSvg = floatingImageEntries.some(([, layer]) => this.getLayerType('', layer) === 'logo')
-            ? ''
-            : await this.renderLockedHeaderSvg(width);
+        const renderedFragments = [];
+        for (const { key, layer } of ordered) {
+            const type = this.getLayerType(key, layer);
+            let fragment = '';
+            if (type === 'shape') {
+                fragment = this.renderShapeSvg(key, layer);
+            } else if (type === 'overlay') {
+                fragment = this.renderOverlaySvg(key, layer);
+            } else if (type === 'image') {
+                const src = layer.src || layer.image || layer.url || (key === 'articleImage' ? (data.imageUrl || '') : '');
+                if (src) fragment = await this.renderSvgImageLayer(layer, src, width, height, { width, height, opacity: layer.opacity ?? 1 }, key);
+            } else if (type === 'logo') {
+                const src = layer.src || layer.image || layer.url;
+                if (src) fragment = await this.renderSvgImageLayer(layer, src, width, height, {}, key);
+            } else if (type === 'lockedImage') {
+                fragment = await this.renderLockedImageSvg(key, layer, width);
+            } else if (type === 'badge') {
+                fragment = this.renderBadgeSvg(key, layer, template, data);
+            } else if (type === 'shapeLine') {
+                fragment = this.renderSeparatorSvg(key, layer);
+            } else if (type === 'textBox') {
+                fragment = this.renderTextBoxSvg(key, layer, data);
+            }
+            if (fragment) renderedFragments.push(fragment);
+        }
 
         return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
           <defs><style type="text/css"><![CDATA[
 ${this.getAileronFontFaceCss()}
           ]]></style></defs>
-          ${articleImageSvg}
-          ${overlaySvg}
-          <g opacity="${this.opacityValue(categoryLayer.opacity, 1)}">
-            <rect x="${categoryX}" y="${categoryY}" width="${categoryWidth}" height="${categoryHeight}" rx="${categoryLayer.borderRadius || categoryLayer.radius || 6}" fill="${this.escapeXmlAttr(color)}"/>
-            <text x="${categoryX + categoryPaddingX}" y="${categoryY + categoryHeight / 2}" font-size="${categoryFontSize}" fill="${this.escapeXmlAttr(categoryLayer.textColor || categoryLayer.color || '#fff')}" ${this.svgTextAttrs(categoryLayer, 'bold')} dominant-baseline="central">${this.escapeXml(category)}</text>
-          </g>
-          <text x="${titleX}" y="${titleLayer.y || 1180}" font-size="${titleLayer.fontSize || 60}" fill="${this.escapeXmlAttr(titleLayer.color || '#fff')}" opacity="${this.opacityValue(titleLayer.opacity, 1)}" ${this.svgTextAttrs(titleLayer, 'bold')}>${titleText}</text>
-          <rect x="${separatorLayer.x || 55}" y="${separatorLayer.y || ((titleLayer.y || 1180) + 80)}" width="${separatorLayer.width || 220}" height="${separatorLayer.height || 5}" fill="${this.escapeXmlAttr(separatorLayer.color || '#c11f25')}" opacity="${this.opacityValue(separatorLayer.opacity, 1)}"/>
-          <text x="${summaryX}" y="${summaryLayer.y || 1400}" font-size="${summaryLayer.fontSize || 32}" fill="${this.escapeXmlAttr(summaryLayer.color || '#E0E0E0')}" opacity="${this.opacityValue(summaryLayer.opacity, 1)}" ${this.svgTextAttrs(summaryLayer, 'normal')}>${summaryText}</text>
-          ${lockedHeaderSvg}
-          ${floatingImageSvg}
-          <text x="${watermarkLayer.x || 55}" y="${watermarkLayer.y || 1880}" font-size="${watermarkLayer.fontSize || 18}" fill="${this.escapeXmlAttr(watermarkLayer.color || '#fff')}" opacity="${this.opacityValue(watermarkLayer.opacity, 0.5)}" ${this.svgTextAttrs(watermarkLayer, 'normal')}>${this.escapeXml(watermarkLayer.text || 'URURAU.COM.BR')}</text>
+          ${renderedFragments.join('\n          ')}
         </svg>`;
+    }
+
+    defaultZIndexFor(key, layer) {
+        const map = {
+            blackBackground: 0, articleImage: 10, bottomGradient: 20,
+            category: 40, title: 50, separator: 55, summary: 60,
+            lockedHeader: 90, watermark: 100
+        };
+        if (map[key] != null) return map[key];
+        const type = this.getLayerType(key, layer);
+        if (type === 'shape') return 0;
+        if (type === 'image') return 10;
+        if (type === 'overlay') return 20;
+        if (type === 'badge') return 40;
+        if (type === 'lockedImage' || type === 'logo') return 90;
+        return 50;
+    }
+
+    renderShapeSvg(key, layer = {}) {
+        const x = this.numberValue(layer.x, 0);
+        const y = this.numberValue(layer.y, 0);
+        const w = Math.max(1, this.numberValue(layer.width, 1080));
+        const h = Math.max(1, this.numberValue(layer.height, 1920));
+        const color = layer.color || layer.background || layer.fill || '#000000';
+        const opacity = this.opacityValue(layer.opacity, 1);
+        return `<rect data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${w}" height="${h}" fill="${this.escapeXmlAttr(color)}" opacity="${opacity}"/>`;
+    }
+
+    renderBadgeSvg(key, layer, template, data) {
+        const category = this.applyTextTransform(data.category || layer.text || 'GERAL', layer.textTransform || 'uppercase');
+        const normalized = this.normalizeCategoryKey(category);
+        const color = layer.background || template.categoryColors?.[category] ||
+            template.categoryColors?.[normalized] || template.categoryColors?.GERAL || '#6c757d';
+        const x = this.numberValue(layer.x, 55);
+        const y = this.numberValue(layer.y, 1100);
+        const fontSize = this.numberValue(layer.fontSize, 22);
+        const paddingX = this.numberValue(layer.paddingX, 24);
+        const height = this.numberValue(layer.height, 52);
+        const letterSpacing = this.numberValue(layer.letterSpacing, 0);
+        const width = layer.autoWidth === false
+            ? this.numberValue(layer.width, 150)
+            : this.calculateBadgeWidth(category, fontSize, paddingX, letterSpacing);
+        const opacity = this.opacityValue(layer.opacity, 1);
+        const radius = layer.borderRadius || layer.radius || 6;
+        return `<g data-layer="${this.escapeXmlAttr(key)}" opacity="${opacity}">
+            <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${this.escapeXmlAttr(color)}"/>
+            <text x="${x + paddingX}" y="${y + height / 2}" font-size="${fontSize}" fill="${this.escapeXmlAttr(layer.textColor || layer.color || '#fff')}" ${this.svgTextAttrs(layer, 'bold')} dominant-baseline="central">${this.escapeXml(category)}</text>
+          </g>`;
+    }
+
+    renderSeparatorSvg(key, layer = {}) {
+        const x = this.numberValue(layer.x, 55);
+        const y = this.numberValue(layer.y, 1340);
+        const w = this.numberValue(layer.width, 220);
+        const h = this.numberValue(layer.height, 5);
+        const color = layer.color || '#c11f25';
+        const opacity = this.opacityValue(layer.opacity, 1);
+        return `<rect data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${w}" height="${h}" fill="${this.escapeXmlAttr(color)}" opacity="${opacity}"/>`;
+    }
+
+    renderTextBoxSvg(key, layer, data) {
+        const x = this.numberValue(layer.x, 55);
+        const y = this.numberValue(layer.y, 1180);
+        const fontSize = this.numberValue(layer.fontSize, 32);
+        const lineHeight = this.numberValue(layer.lineHeight, fontSize * 1.2);
+        const opacity = this.opacityValue(layer.opacity, 1);
+        const color = layer.color || '#FFFFFF';
+        const maxWidth = this.numberValue(layer.maxWidth || layer.width, 970);
+
+        let textContent = '';
+        if (key === 'title') {
+            const lines = this.wrapMultiline(data.title || layer.text || '', maxWidth, fontSize, 4);
+            textContent = lines.map((line, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${this.escapeXml(line)}</tspan>`).join('');
+        } else if (key === 'summary') {
+            const lines = this.wrapMultiline(data.summary || layer.text || '', maxWidth, fontSize, 5);
+            textContent = lines.map((line, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${this.escapeXml(line)}</tspan>`).join('');
+        } else if (key === 'watermark') {
+            textContent = this.escapeXml(layer.text || 'URURAU.COM.BR');
+        } else {
+            // textBox generico (custom): respeita layer.text
+            textContent = this.escapeXml(layer.text || '');
+        }
+
+        const fallbackWeight = (key === 'title' || key === 'category') ? 'bold' : 'normal';
+        return `<text data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" font-size="${fontSize}" fill="${this.escapeXmlAttr(color)}" opacity="${opacity}" ${this.svgTextAttrs(layer, fallbackWeight)}>${textContent}</text>`;
+    }
+
+    async renderLockedImageSvg(key, layer, canvasWidth) {
+        // Para lockedHeader, mantemos o comportamento de cropped header do PNG.
+        // Se o layer tem src + crop, renderizamos so a area cropada.
+        const src = layer.src || layer.image || layer.url || getTemplateBasePath();
+        const x = this.numberValue(layer.x, 0);
+        const y = this.numberValue(layer.y, 0);
+        const targetWidth = Math.max(1, this.numberValue(layer.width, canvasWidth));
+        const targetHeight = Math.max(1, this.numberValue(layer.height, 260));
+        const opacity = this.opacityValue(layer.opacity, 1);
+
+        try {
+            const fileSrc = /^https?:\/\//i.test(src) ? src : (src.startsWith('/') ? this.resolveImagePath(src) : src);
+            // Se for absoluto/local, usamos sharp para extrair crop e converter para base64
+            if (!/^https?:\/\//i.test(src)) {
+                const localPath = isAbsolute(fileSrc) ? fileSrc : this.resolveImagePath(src);
+                if (existsSync(localPath)) {
+                    const metadata = await sharp(localPath).metadata();
+                    const crop = layer.crop || { x: 0, y: 0, width: metadata.width, height: metadata.height };
+                    const safeCrop = {
+                        left: Math.max(0, Math.round(this.numberValue(crop.x, 0))),
+                        top: Math.max(0, Math.round(this.numberValue(crop.y, 0))),
+                        width: Math.min(metadata.width, Math.round(this.numberValue(crop.width, metadata.width))),
+                        height: Math.min(metadata.height, Math.round(this.numberValue(crop.height, metadata.height)))
+                    };
+                    const buffer = await sharp(localPath).extract(safeCrop).resize(targetWidth, targetHeight).png().toBuffer();
+                    const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+                    return `<image data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${targetWidth}" height="${targetHeight}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="none" opacity="${opacity}"/>`;
+                }
+            }
+        } catch (err) {
+            // fallback: nao renderiza
+        }
+        // Fallback: tentar renderizar como image normal
+        return await this.renderSvgImageLayer(layer, src, canvasWidth, targetHeight + y, { width: targetWidth, height: targetHeight, opacity }, key);
     }
 
     wrapMultiline(text, maxWidth, fontSize, maxLines = 4) {
@@ -496,7 +600,9 @@ ${this.getAileronFontFaceCss()}
         if (key === 'category') return 'badge';
         if (key === 'separator') return 'shapeLine';
         if (key === 'title' || key === 'summary' || key === 'watermark') return 'textBox';
-        if (/overlay/i.test(key)) return 'overlay';
+        if (key === 'blackBackground') return 'shape';
+        if (key === 'lockedHeader') return 'lockedImage';
+        if (/overlay/i.test(key) || /gradient/i.test(key)) return 'overlay';
         if (/logo/i.test(key)) return 'logo';
         if (layer.src || layer.image || layer.url) return 'image';
         if (typeof layer.width === 'number' && typeof layer.height === 'number') return 'overlay';
@@ -526,15 +632,16 @@ ${this.getAileronFontFaceCss()}
 
     resolveImagePath(src) {
         const normalized = String(src || '').replace(/\\/g, '/');
-        if (isAbsolute(normalized)) return normalized;
+        const candidates = [];
+        if (isAbsolute(normalized)) candidates.push(normalized);
         const relative = normalized.replace(/^\/+/, '');
-        const candidates = [
+        candidates.push(
             resolve(process.cwd(), relative),
             resolve(DASHBOARD_PUBLIC_DIR, relative),
             resolve(DASHBOARD_PUBLIC_DIR, relative.replace(/^assets\//, 'assets/')),
             resolve(DASHBOARD_PUBLIC_DIR, relative.replace(/^public\//, '')),
             resolve(__dirname, '../../../', relative)
-        ];
+        );
         return candidates.find(candidate => existsSync(candidate)) || candidates[0];
     }
 
