@@ -15,9 +15,91 @@ const TEMPLATE_BASE_FILE = join(TEMPLATES_DIR, 'assets', 'template-base.png');
 export function loadTemplate(templateId = TEMPLATE_ID) {
   const templatePath = join(TEMPLATES_DIR, `${templateId}.json`);
   if (!existsSync(templatePath)) throw new Error(`Template não encontrado: ${templatePath}`);
-  const template = JSON.parse(readFileSync(templatePath, 'utf-8'));
+  const raw = JSON.parse(readFileSync(templatePath, 'utf-8'));
+  const template = migrateTemplate(raw);
   validateTemplate(template);
   return template;
+}
+
+/**
+ * Migra templates de versoes antigas para o schema atual.
+ * - schemaVersion ausente => assume 1 (sem categoryStyles, sem bindings, sem layers metadata completa)
+ * - categoryColors sem categoryStyles => gera categoryStyles a partir do colors
+ * - bottomGradient como overlay solido => mantem como esta (compat),
+ *   mas se vier sem colorStops e o frontend ja interpreta como gradient,
+ *   o JSON novo (v2+) ja usa type: gradientOverlay.
+ * - layers sem zIndex/visible/locked/deletable/rotation => preenche com defaults seguros.
+ *
+ * Idempotente: chamar 2x produz o mesmo resultado.
+ */
+export function migrateTemplate(template) {
+  if (!template || typeof template !== 'object') return template;
+  const t = JSON.parse(JSON.stringify(template));
+  const version = Number(t.schemaVersion || 1);
+
+  // 1. categoryStyles a partir de categoryColors legacy
+  if (t.categoryColors && !t.categoryStyles) {
+    t.categoryStyles = {};
+    for (const [k, v] of Object.entries(t.categoryColors)) {
+      t.categoryStyles[k] = { background: v, textColor: '#FFFFFF' };
+    }
+  }
+  // Garante categoryColors existir (compat com codigo legado que le de la)
+  if (t.categoryStyles && !t.categoryColors) {
+    t.categoryColors = {};
+    for (const [k, v] of Object.entries(t.categoryStyles)) {
+      t.categoryColors[k] = v.background;
+    }
+  }
+
+  // 2. canvas a partir de source
+  if (!t.canvas && t.source?.width && t.source?.height) {
+    t.canvas = { width: t.source.width, height: t.source.height, background: '#000000' };
+  }
+
+  // 3. bindings padrao se ausente
+  if (!t.bindings) {
+    t.bindings = {
+      category: 'article.category',
+      title: 'article.title',
+      summary: 'article.summary',
+      'articleImage.src': 'article.image',
+      watermark: null
+    };
+  }
+
+  // 4. fonts default se ausente
+  if (!t.fonts) {
+    t.fonts = {
+      family: 'Aileron',
+      weights: [400, 700],
+      files: {
+        400: '/assets/fonts/aileron/AileronRegular.otf',
+        700: '/assets/fonts/aileron/AileronBold.otf'
+      },
+      required: true
+    };
+  }
+
+  // 5. metadados nas layers
+  if (t.layers) {
+    const defaultZ = { blackBackground: 0, articleImage: 10, bottomGradient: 20, category: 40, title: 50, separator: 55, summary: 60, lockedHeader: 90, watermark: 100 };
+    for (const [key, layer] of Object.entries(t.layers)) {
+      if (!layer.id) layer.id = key;
+      if (typeof layer.zIndex !== 'number') layer.zIndex = defaultZ[key] != null ? defaultZ[key] : 50;
+      if (typeof layer.visible !== 'boolean') layer.visible = true;
+      if (typeof layer.locked !== 'boolean') layer.locked = (key === 'blackBackground' || key === 'lockedHeader');
+      if (typeof layer.deletable !== 'boolean') {
+        layer.deletable = !(key === 'blackBackground' || key === 'lockedHeader' || key === 'category' || key === 'title' || key === 'separator' || key === 'summary' || key === 'watermark');
+      }
+      if (typeof layer.opacity !== 'number') layer.opacity = 1;
+      if (typeof layer.rotation !== 'number') layer.rotation = 0;
+    }
+  }
+
+  // 6. atualiza schemaVersion
+  if (version < 2) t.schemaVersion = 2;
+  return t;
 }
 
 function validateTemplate(template) {

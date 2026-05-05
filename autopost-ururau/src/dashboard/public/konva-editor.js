@@ -30,6 +30,7 @@
   let selectedElement = null;
   let undoStack = [];
   let currentScale = 0.45;
+  let transformer = null;        // Konva.Transformer global, anexado ao layer
 
   const CANVAS_WIDTH = 1080;
   const CANVAS_HEIGHT = 1920;
@@ -70,7 +71,7 @@
   const DEFAULT_TYPES = {
     blackBackground: 'shape',
     articleImage: 'image',
-    bottomGradient: 'overlay',
+    bottomGradient: 'gradientOverlay',
     category: 'badge',
     title: 'textBox',
     summary: 'textBox',
@@ -137,6 +138,31 @@
 
     layer = new Konva.Layer();
     stage.add(layer);
+
+    // Transformer global para resize/rotate de elementos editaveis
+    transformer = new Konva.Transformer({
+      anchorSize: 14,
+      anchorStroke: '#E63946',
+      anchorFill: '#ffffff',
+      borderStroke: '#E63946',
+      borderDash: [6, 4],
+      keepRatio: false,
+      rotateEnabled: true,
+      ignoreStroke: true,
+      enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']
+    });
+    transformer.on('transformend', function () {
+      if (!selectedElement) return;
+      const node = konvaElements[selectedElement];
+      if (!node) return;
+      // Aplica scale na width/height e zera scale para manter coords limpos
+      applyTransformerScaleToSize(node);
+      saveUndo();
+      updatePropertiesPanel(selectedElement);
+      updateElementList();
+      refreshSelectionIndicator();
+    });
+    layer.add(transformer);
 
     await createAllLayers();
     applyZIndexOrder();
@@ -220,6 +246,7 @@
     if (type === 'image') return createImage(key, config, meta);
     if (type === 'lockedImage') return createLockedImage(key, config, meta);
     if (type === 'overlay') return createOverlay(key, config, meta);
+    if (type === 'gradientOverlay') return createGradientOverlay(key, config, meta);
     if (type === 'badge') return createBadge(key, config, meta);
     if (type === 'shapeLine') return createShapeLine(key, config, meta);
     if (type === 'textBox') return createTextBox(key, config, meta);
@@ -383,16 +410,91 @@
     konvaElements[key] = node;
   }
 
+  function createGradientOverlay(key, config, meta) {
+    const x = numOr(config.x, 0);
+    const y = numOr(config.y, 0);
+    const w = Math.max(1, numOr(config.width, CANVAS_WIDTH));
+    const h = Math.max(1, numOr(config.height, 600));
+    const angle = numOr(config.angle, 90);  // graus, 0=horizontal->direita, 90=vertical->baixo
+    const stops = normalizeColorStops(config.colorStops);
+
+    const gradientPoints = anglePointsForRect(angle, w, h);
+    const node = new Konva.Rect({
+      x: x, y: y,
+      width: w, height: h,
+      fillLinearGradientStartPoint: gradientPoints.start,
+      fillLinearGradientEndPoint: gradientPoints.end,
+      fillLinearGradientColorStops: stopsToKonva(stops),
+      opacity: clamp01(numOr(config.opacity, 1)),
+      rotation: numOr(config.rotation, 0),
+      visible: meta.visible,
+      draggable: !meta.locked,
+      listening: !meta.locked,
+      name: key,
+      id: key
+    });
+    node.setAttr('componentType', 'gradientOverlay');
+    node.setAttr('angle', angle);
+    node.setAttr('colorStops', stops);
+    setupElementEvents(node, key);
+    layer.add(node);
+    konvaElements[key] = node;
+  }
+
+  function normalizeColorStops(stops) {
+    const arr = Array.isArray(stops) && stops.length ? stops : [
+      { offset: 0, color: 'rgba(0,0,0,0)' },
+      { offset: 1, color: 'rgba(0,0,0,1)' }
+    ];
+    return arr.map(function (s) {
+      return { offset: clamp01(numOr(s.offset, 0)), color: String(s.color || 'rgba(0,0,0,1)') };
+    }).sort(function (a, b) { return a.offset - b.offset; });
+  }
+
+  // Konva exige array plano [offset, color, offset, color, ...]
+  function stopsToKonva(stops) {
+    const out = [];
+    stops.forEach(function (s) { out.push(s.offset, s.color); });
+    return out;
+  }
+
+  // Calcula dois pontos (start, end) dentro do retangulo dado um angulo em graus
+  // Convencao: 0deg = esquerda->direita; 90deg = topo->base; 180 = direita->esquerda
+  function anglePointsForRect(angleDeg, w, h) {
+    const rad = (angleDeg * Math.PI) / 180;
+    const cx = w / 2, cy = h / 2;
+    const dx = Math.cos(rad), dy = Math.sin(rad);
+    // Tamanho da projecao dentro da caixa
+    const half = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
+    return {
+      start: { x: cx - dx * half, y: cy - dy * half },
+      end:   { x: cx + dx * half, y: cy + dy * half }
+    };
+  }
+
+  function applyGradientUpdate(node) {
+    const w = node.width();
+    const h = node.height();
+    const angle = numOr(node.getAttr('angle'), 90);
+    const stops = node.getAttr('colorStops') || [];
+    const pts = anglePointsForRect(angle, w, h);
+    node.fillLinearGradientStartPoint(pts.start);
+    node.fillLinearGradientEndPoint(pts.end);
+    node.fillLinearGradientColorStops(stopsToKonva(stops));
+  }
+
   function createBadge(key, config, meta) {
     const cat = config;
-    const colors = templateData.categoryColors || FALLBACK_CATEGORY_COLORS;
     const catLabel = formatCategoryLabel(cat.text || (templateData.defaults && templateData.defaults.category) || DEFAULT_PREVIEW.category, cat);
     const fontSize = numOr(cat.fontSize, 22);
     const paddingX = numOr(cat.paddingX, 24);
     const paddingY = numOr(cat.paddingY, 14);
     const autoWidth = cat.autoWidth !== false;
     const badgeHeight = Math.max(1, numOr(cat.height, fontSize + paddingY * 2));
-    const badgeColor = isHexColor(cat.background) ? cat.background : getCategoryColor(catLabel, colors);
+    // Resolve cor do badge: 1) cat.background explicito 2) categoryStyles 3) fallback
+    const resolvedStyle = resolveCategoryStyle(catLabel);
+    const badgeColor = isHexColor(cat.background) ? cat.background : resolvedStyle.background;
+    const textColor = cat.textColor || cat.color || resolvedStyle.textColor || '#FFFFFF';
 
     const group = new Konva.Group({
       x: numOr(cat.x, 67), y: numOr(cat.y, 1174),
@@ -436,7 +538,7 @@
       fontFamily: normalizeFontFamily(cat.fontFamily),
       fontStyle: normalizeFontWeight(cat.fontWeight, 'bold'),
       letterSpacing: numOr(cat.letterSpacing, 0),
-      fill: cat.textColor || cat.color || '#FFFFFF',
+      fill: textColor,
       name: 'badge-text'
     });
 
@@ -534,9 +636,10 @@
       try { node.zIndex(i); } catch (e) { /* ignore */ }
     });
 
-    // selection-indicator sempre no topo (e' adicionado/removido dinamicamente)
+    // selection-indicator e transformer sempre no topo
     const indicators = layer.find('.selection-indicator');
     indicators.forEach(function (ind) { ind.moveToTop(); });
+    if (transformer) transformer.moveToTop();
   }
 
   function moveLayerBy(key, delta) {
@@ -671,8 +774,58 @@
     deselectAllVisuals();
     selectedElement = key;
     drawSelectionIndicator(konvaElements[key]);
+    attachTransformer(key);
     updatePropertiesPanel(key);
     updateElementList();
+  }
+
+  function attachTransformer(key) {
+    if (!transformer) return;
+    const node = konvaElements[key];
+    const meta = layerMeta[key];
+    if (!node || !meta) { transformer.nodes([]); transformer.visible(false); return; }
+    // Nao mostra transformer em camadas locked, no fundo preto, ou em separator/lockedHeader
+    const noTransform = meta.locked
+      || meta.type === 'shape'           // blackBackground - fixo
+      || meta.type === 'lockedImage'     // lockedHeader - fixo
+      || meta.type === 'shapeLine';      // separator usa controles do painel
+    if (noTransform) {
+      transformer.nodes([]);
+      transformer.visible(false);
+      return;
+    }
+    transformer.nodes([node]);
+    transformer.visible(true);
+    transformer.moveToTop();
+  }
+
+  function applyTransformerScaleToSize(node) {
+    if (!node) return;
+    const sx = node.scaleX();
+    const sy = node.scaleY();
+    if (Math.abs(sx - 1) < 0.001 && Math.abs(sy - 1) < 0.001) return;
+    if (typeof node.width === 'function' && typeof node.height === 'function') {
+      const newW = Math.max(1, Math.round(node.width() * sx));
+      const newH = Math.max(1, Math.round(node.height() * sy));
+      node.width(newW);
+      node.height(newH);
+      node.scaleX(1);
+      node.scaleY(1);
+      // Casos especiais:
+      const meta = layerMeta[selectedElement] || {};
+      if (meta.type === 'gradientOverlay') applyGradientUpdate(node);
+      if (meta.type === 'badge') {
+        // re-sincroniza filhos do group
+        const bg = node.findOne('.badge-bg');
+        const hit = node.findOne('.badge-hit');
+        const text = node.findOne('.badge-text');
+        if (bg) bg.size({ width: newW, height: newH });
+        if (hit) hit.size({ width: newW, height: newH });
+        if (text) text.y((newH - text.fontSize()) / 2 + 2);
+        node.setAttr('autoWidth', false);
+      }
+      if (meta.type === 'image' && node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
   }
 
   function drawSelectionIndicator(node) {
@@ -709,6 +862,7 @@
   function deselectAll() {
     selectedElement = null;
     deselectAllVisuals();
+    if (transformer) { transformer.nodes([]); transformer.visible(false); }
     updateElementList();
     const panel = document.getElementById('propertiesPanel');
     if (panel) panel.innerHTML = '<p style="color:#666;font-size:12px">Selecione um elemento no canvas para editar.</p>';
@@ -837,10 +991,17 @@
     else if (componentType === 'shapeLine') html += renderShapeLineControls(key, node);
     else if (componentType === 'textBox') html += renderTextBoxControls(key, node);
     else if (componentType === 'overlay') html += renderOverlayControls(key, node);
+    else if (componentType === 'gradientOverlay') html += renderGradientOverlayControls(key, node);
     else if (componentType === 'image' || componentType === 'logo') html += renderImageControls(key, node);
     else if (componentType === 'shape') html += renderShapeControls(key, node);
     else if (componentType === 'lockedImage') html += renderLockedImageControls(key, node);
     else html += renderImageControls(key, node);
+
+    // Controles comuns no fim: rotation + zIndex
+    html += '<div class="tool-row">' +
+      numberControl(key, 'rotation', 'Rotacao (deg)', Math.round(node.rotation ? node.rotation() : 0)) +
+      numberControl(key, 'zIndex', 'zIndex', meta.zIndex) +
+      '</div>';
 
     document.getElementById('propertiesPanel').innerHTML = html;
   }
@@ -884,6 +1045,72 @@
       numberControl(key, 'borderRadius', 'Raio', node.cornerRadius ? node.cornerRadius() : 0);
   }
 
+  function renderGradientOverlayControls(key, node) {
+    const stops = node.getAttr('colorStops') || [];
+    const angle = numOr(node.getAttr('angle'), 90);
+    let html = '<div class="tool-row">' +
+      numberControl(key, 'width', 'Largura', Math.round(node.width())) +
+      numberControl(key, 'height', 'Altura', Math.round(node.height())) +
+      '</div>' +
+      '<div class="tool-row">' +
+      numberControl(key, 'angle', 'Angulo (deg)', Math.round(angle)) +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
+      '</div>' +
+      '<div class="tool-group" style="font-size:11px;color:#a0a0b0;margin-top:6px"><label>Color stops</label>';
+    stops.forEach(function (s, i) {
+      html += '<div class="tool-row" style="margin:4px 0">' +
+        '<input type="number" min="0" max="1" step="0.05" value="' + escapeHtmlAttr(s.offset) + '" onchange="window.updateGradientStop(\'' + key + '\', ' + i + ', \'offset\', this.value)">' +
+        '<input type="text" value="' + escapeHtmlAttr(s.color) + '" placeholder="rgba(0,0,0,1) ou #000" onchange="window.updateGradientStop(\'' + key + '\', ' + i + ', \'color\', this.value)">' +
+        '</div>';
+    });
+    html += '<div style="margin-top:6px;display:flex;gap:6px">' +
+      '<button style="flex:1;padding:6px;background:transparent;border:1px solid #1a1a3a;border-radius:6px;color:#fff;cursor:pointer" onclick="window.addGradientStop(\'' + key + '\')">+ stop</button>' +
+      '<button style="flex:1;padding:6px;background:transparent;border:1px solid #1a1a3a;border-radius:6px;color:#fff;cursor:pointer" onclick="window.removeGradientStop(\'' + key + '\')">- stop</button>' +
+      '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  window.updateGradientStop = function (key, index, prop, value) {
+    const node = konvaElements[key];
+    if (!node) return;
+    const stops = node.getAttr('colorStops') || [];
+    if (!stops[index]) return;
+    saveUndo();
+    if (prop === 'offset') stops[index].offset = clamp01(numOr(value, stops[index].offset));
+    else stops[index].color = String(value);
+    stops.sort(function (a, b) { return a.offset - b.offset; });
+    node.setAttr('colorStops', stops);
+    applyGradientUpdate(node);
+    layer.draw();
+    updatePropertiesPanel(key);
+    refreshSelectionIndicator();
+  };
+  window.addGradientStop = function (key) {
+    const node = konvaElements[key];
+    if (!node) return;
+    const stops = node.getAttr('colorStops') || [];
+    saveUndo();
+    stops.push({ offset: 0.5, color: 'rgba(0,0,0,0.5)' });
+    stops.sort(function (a, b) { return a.offset - b.offset; });
+    node.setAttr('colorStops', stops);
+    applyGradientUpdate(node);
+    layer.draw();
+    updatePropertiesPanel(key);
+  };
+  window.removeGradientStop = function (key) {
+    const node = konvaElements[key];
+    if (!node) return;
+    const stops = node.getAttr('colorStops') || [];
+    if (stops.length <= 2) { showStatus('Gradiente precisa de pelo menos 2 stops.', 'info'); return; }
+    saveUndo();
+    stops.pop();
+    node.setAttr('colorStops', stops);
+    applyGradientUpdate(node);
+    layer.draw();
+    updatePropertiesPanel(key);
+  };
+
   function renderShapeControls(key, node) {
     return '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(node.width())) + numberControl(key, 'height', 'Altura', Math.round(node.height())) + '</div>' +
       '<div class="tool-row">' + colorControl(key, 'color', 'Cor', node.fill()) + rangeControl(key, 'opacity', 'Opacidade', node.opacity()) + '</div>';
@@ -907,10 +1134,35 @@
     const meta = layerMeta[key];
     if (!node || !meta) return;
     saveUndo();
+
+    // Props comuns a todos os tipos
+    if (prop === 'rotation' && typeof node.rotation === 'function') {
+      node.rotation(numOr(value, 0));
+      layer.draw();
+      updatePropertiesPanel(key);
+      updateElementList();
+      refreshSelectionIndicator();
+      return;
+    }
+    if (prop === 'zIndex') {
+      const newZ = parseInt(value, 10);
+      if (Number.isFinite(newZ)) {
+        meta.zIndex = newZ;
+        if (templateData.layers[key]) templateData.layers[key].zIndex = newZ;
+        applyZIndexOrder();
+        layer.draw();
+        updatePropertiesPanel(key);
+        updateElementList();
+        refreshSelectionIndicator();
+      }
+      return;
+    }
+
     if (meta.type === 'badge') updateBadgeProp(node, prop, value);
     else if (meta.type === 'shapeLine') updateShapeLineProp(node, prop, value);
     else if (meta.type === 'textBox') updateTextBoxProp(node, prop, value);
     else if (meta.type === 'overlay') updateOverlayProp(node, prop, value);
+    else if (meta.type === 'gradientOverlay') updateGradientOverlayProp(node, prop, value);
     else if (meta.type === 'image' || meta.type === 'logo') updateImageProp(node, prop, value);
     else if (meta.type === 'shape') updateShapeProp(node, prop, value);
     else if (meta.type === 'lockedImage') updateLockedImageProp(node, prop, value);
@@ -920,6 +1172,14 @@
     refreshSelectionIndicator();
   }
   window.updateNodePropFromInput = updateNodeProp;
+
+  function updateGradientOverlayProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') { node.setAttr(prop, numOr(value, node.getAttr(prop))); return; }
+    if (prop === 'width') { node.width(Math.max(1, numOr(value, node.width()))); applyGradientUpdate(node); return; }
+    if (prop === 'height') { node.height(Math.max(1, numOr(value, node.height()))); applyGradientUpdate(node); return; }
+    if (prop === 'angle') { node.setAttr('angle', numOr(value, node.getAttr('angle'))); applyGradientUpdate(node); return; }
+    if (prop === 'opacity') { node.opacity(clamp01(numOr(value, node.opacity()))); return; }
+  }
 
   function updateBadgeProp(group, prop, value) {
     const bg = group.findOne('.badge-bg');
@@ -1017,8 +1277,11 @@
 
     if (data.category && konvaElements.category) {
       updateBadgeProp(konvaElements.category, 'text', data.category);
+      const style = resolveCategoryStyle(data.category);
       const bg = konvaElements.category.findOne('.badge-bg');
-      if (bg) bg.fill(getCategoryColor(data.category, templateData.categoryColors || FALLBACK_CATEGORY_COLORS));
+      const text = konvaElements.category.findOne('.badge-text');
+      if (bg && style.background) bg.fill(style.background);
+      if (text && style.textColor) text.fill(style.textColor);
     }
     if (data.title && konvaElements.title) konvaElements.title.text(data.title);
     if (data.summary && konvaElements.summary) konvaElements.summary.text(data.summary);
@@ -1158,8 +1421,13 @@
     next.defaults.category = catLabel;
     if (!next.categoryColors) next.categoryColors = {};
     next.categoryColors[catLabel] = bg.fill();
+    if (!next.categoryStyles) next.categoryStyles = {};
+    next.categoryStyles[catLabel] = { background: bg.fill(), textColor: text.fill() };
     const normalized = normalizeCategoryKey(catLabel);
-    if (normalized && normalized !== catLabel) next.categoryColors[normalized] = bg.fill();
+    if (normalized && normalized !== catLabel) {
+      next.categoryColors[normalized] = bg.fill();
+      next.categoryStyles[normalized] = { background: bg.fill(), textColor: text.fill() };
+    }
   }
 
   function persistShapeLine(target, node) {
@@ -1192,6 +1460,16 @@
     target.background = node.fill();
     target.opacity = node.opacity();
     if (node.cornerRadius) target.borderRadius = Math.round(numOr(node.cornerRadius(), 0));
+  }
+
+  function persistGradientOverlay(target, node) {
+    target.width = Math.round(node.width());
+    target.height = Math.round(node.height());
+    target.angle = numOr(node.getAttr('angle'), 90);
+    target.colorStops = (node.getAttr('colorStops') || []).map(function (s) {
+      return { offset: clamp01(numOr(s.offset, 0)), color: String(s.color || '#000') };
+    });
+    target.opacity = node.opacity();
   }
 
   function persistShape(target, node) {
@@ -1231,11 +1509,13 @@
       const target = next.layers[key];
       target.x = Math.round(node.x());
       target.y = Math.round(node.y());
+      if (typeof node.rotation === 'function') target.rotation = numOr(node.rotation(), 0);
       persistMeta(target, key);
       if (meta.type === 'badge') persistBadge(next, target, node);
       else if (meta.type === 'shapeLine') persistShapeLine(target, node);
       else if (meta.type === 'textBox') persistTextBox(next, target, key, node);
       else if (meta.type === 'overlay') persistOverlay(target, node);
+      else if (meta.type === 'gradientOverlay') persistGradientOverlay(target, node);
       else if (meta.type === 'shape') persistShape(target, node);
       else if (meta.type === 'image' || meta.type === 'logo') persistImage(target, node);
       else if (meta.type === 'lockedImage') persistLockedImage(target, node);
@@ -1286,6 +1566,8 @@
   function generatePreviewKonva() {
     const indicators = layer.find('.selection-indicator');
     indicators.forEach(function (i) { i.visible(false); });
+    const tWasVisible = transformer && transformer.visible();
+    if (transformer) transformer.visible(false);
     stage.scale({ x: 1, y: 1 });
     stage.width(CANVAS_WIDTH);
     stage.height(CANVAS_HEIGHT);
@@ -1296,12 +1578,14 @@
     } catch (err) {
       applyStageScale();
       indicators.forEach(function (i) { i.visible(true); });
+      if (transformer && tWasVisible) transformer.visible(true);
       layer.draw();
       showStatus('Preview PNG bloqueado por imagem remota sem CORS. O editor segue editavel.', 'error');
       return;
     }
     applyStageScale();
     indicators.forEach(function (i) { i.visible(true); });
+    if (transformer && tWasVisible) transformer.visible(true);
     layer.draw();
     const win = window.open();
     if (win) {
@@ -1479,6 +1763,23 @@
     const exact = formatCategoryLabel(label, (templateData.layers || {}).category);
     const normalized = normalizeCategoryKey(exact);
     return c[exact] || c[normalized] || c.GERAL || FALLBACK_CATEGORY_COLORS[normalized] || FALLBACK_CATEGORY_COLORS.GERAL;
+  }
+
+  // Resolve um par {background, textColor} a partir de templateData.categoryStyles.
+  // Cai pra categoryColors legacy se categoryStyles nao tiver a chave.
+  function resolveCategoryStyle(label) {
+    const cat = formatCategoryLabel(label, (templateData.layers || {}).category);
+    const normalized = normalizeCategoryKey(cat);
+    const styles = templateData.categoryStyles || {};
+    const colors = templateData.categoryColors || FALLBACK_CATEGORY_COLORS;
+    const style = styles[cat] || styles[normalized] || styles.GERAL;
+    if (style && (style.background || style.textColor)) {
+      return {
+        background: style.background || colors[cat] || colors[normalized] || '#6c757d',
+        textColor: style.textColor || '#FFFFFF'
+      };
+    }
+    return { background: getCategoryColor(cat, colors), textColor: '#FFFFFF' };
   }
   function formatCategoryLabel(value, layerConfig) {
     const text = String(value == null ? '' : value).trim() || DEFAULT_PREVIEW.category;

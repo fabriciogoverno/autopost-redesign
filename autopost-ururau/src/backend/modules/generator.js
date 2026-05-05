@@ -374,6 +374,8 @@ class ArtGenerator {
                 fragment = this.renderShapeSvg(key, layer);
             } else if (type === 'overlay') {
                 fragment = this.renderOverlaySvg(key, layer);
+            } else if (type === 'gradientOverlay') {
+                fragment = this.renderGradientOverlaySvg(key, layer);
             } else if (type === 'image') {
                 const src = layer.src || layer.image || layer.url || (key === 'articleImage' ? (data.imageUrl || '') : '');
                 if (src) fragment = await this.renderSvgImageLayer(layer, src, width, height, { width, height, opacity: layer.opacity ?? 1 }, key);
@@ -410,7 +412,7 @@ ${this.getAileronFontFaceCss()}
         const type = this.getLayerType(key, layer);
         if (type === 'shape') return 0;
         if (type === 'image') return 10;
-        if (type === 'overlay') return 20;
+        if (type === 'overlay' || type === 'gradientOverlay') return 20;
         if (type === 'badge') return 40;
         if (type === 'lockedImage' || type === 'logo') return 90;
         return 50;
@@ -426,11 +428,64 @@ ${this.getAileronFontFaceCss()}
         return `<rect data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${w}" height="${h}" fill="${this.escapeXmlAttr(color)}" opacity="${opacity}"/>`;
     }
 
+    renderGradientOverlaySvg(key, layer = {}) {
+        // Gera <defs><linearGradient/></defs> + <rect fill="url(#id)"/>
+        const x = this.numberValue(layer.x, 0);
+        const y = this.numberValue(layer.y, 0);
+        const w = Math.max(1, this.numberValue(layer.width, 1080));
+        const h = Math.max(1, this.numberValue(layer.height, 600));
+        const angle = this.numberValue(layer.angle, 90);
+        const opacity = this.opacityValue(layer.opacity, 1);
+        const stops = Array.isArray(layer.colorStops) && layer.colorStops.length
+            ? layer.colorStops.slice().sort((a, b) => (a.offset || 0) - (b.offset || 0))
+            : [{ offset: 0, color: 'rgba(0,0,0,0)' }, { offset: 1, color: 'rgba(0,0,0,1)' }];
+
+        // SVG linearGradient usa x1/y1/x2/y2 em userSpaceOnUse para suportar angulo arbitrario.
+        // Convencao igual ao Konva: 0deg = horizontal->direita, 90deg = vertical->baixo.
+        const rad = (angle * Math.PI) / 180;
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        const dx = Math.cos(rad);
+        const dy = Math.sin(rad);
+        const half = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
+        const x1 = cx - dx * half;
+        const y1 = cy - dy * half;
+        const x2 = cx + dx * half;
+        const y2 = cy + dy * half;
+        const gradId = 'grad-' + this.escapeXmlAttr(key);
+        const stopsXml = stops.map(s => {
+            const off = Math.max(0, Math.min(1, this.numberValue(s.offset, 0)));
+            const color = String(s.color || 'rgba(0,0,0,1)');
+            // Se a cor for rgba, separamos em stop-color + stop-opacity
+            const rgba = color.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/i);
+            if (rgba) {
+                const r = rgba[1], g = rgba[2], b = rgba[3];
+                const a = rgba[4] != null ? rgba[4] : '1';
+                return `<stop offset="${off}" stop-color="rgb(${r},${g},${b})" stop-opacity="${a}"/>`;
+            }
+            return `<stop offset="${off}" stop-color="${this.escapeXmlAttr(color)}"/>`;
+        }).join('');
+
+        return `<defs><linearGradient id="${gradId}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stopsXml}</linearGradient></defs>
+          <rect data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${gradId})" opacity="${opacity}"/>`;
+    }
+
     renderBadgeSvg(key, layer, template, data) {
         const category = this.applyTextTransform(data.category || layer.text || 'GERAL', layer.textTransform || 'uppercase');
         const normalized = this.normalizeCategoryKey(category);
-        const color = layer.background || template.categoryColors?.[category] ||
-            template.categoryColors?.[normalized] || template.categoryColors?.GERAL || '#6c757d';
+        // Resolve style: 1) categoryStyles[categoria atual] vence se existir
+        //                2) layer.background (cor salva no template)
+        //                3) categoryColors legacy
+        //                4) GERAL fallback
+        const styles = template.categoryStyles || {};
+        const colors = template.categoryColors || {};
+        const styleByCategory = styles[category] || styles[normalized];
+        const background = (styleByCategory && styleByCategory.background)
+            || layer.background
+            || colors[category] || colors[normalized] || colors.GERAL || '#6c757d';
+        const textColor = (styleByCategory && styleByCategory.textColor)
+            || layer.textColor || layer.color
+            || '#fff';
         const x = this.numberValue(layer.x, 55);
         const y = this.numberValue(layer.y, 1100);
         const fontSize = this.numberValue(layer.fontSize, 22);
@@ -443,8 +498,8 @@ ${this.getAileronFontFaceCss()}
         const opacity = this.opacityValue(layer.opacity, 1);
         const radius = layer.borderRadius || layer.radius || 6;
         return `<g data-layer="${this.escapeXmlAttr(key)}" opacity="${opacity}">
-            <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${this.escapeXmlAttr(color)}"/>
-            <text x="${x + paddingX}" y="${y + height / 2}" font-size="${fontSize}" fill="${this.escapeXmlAttr(layer.textColor || layer.color || '#fff')}" ${this.svgTextAttrs(layer, 'bold')} dominant-baseline="central">${this.escapeXml(category)}</text>
+            <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${this.escapeXmlAttr(background)}"/>
+            <text x="${x + paddingX}" y="${y + height / 2}" font-size="${fontSize}" fill="${this.escapeXmlAttr(textColor)}" ${this.svgTextAttrs(layer, 'bold')} dominant-baseline="central">${this.escapeXml(category)}</text>
           </g>`;
     }
 
@@ -602,7 +657,8 @@ ${this.getAileronFontFaceCss()}
         if (key === 'title' || key === 'summary' || key === 'watermark') return 'textBox';
         if (key === 'blackBackground') return 'shape';
         if (key === 'lockedHeader') return 'lockedImage';
-        if (/overlay/i.test(key) || /gradient/i.test(key)) return 'overlay';
+        if (/gradient/i.test(key) || Array.isArray(layer.colorStops)) return 'gradientOverlay';
+        if (/overlay/i.test(key)) return 'overlay';
         if (/logo/i.test(key)) return 'logo';
         if (layer.src || layer.image || layer.url) return 'image';
         if (typeof layer.width === 'number' && typeof layer.height === 'number') return 'overlay';
