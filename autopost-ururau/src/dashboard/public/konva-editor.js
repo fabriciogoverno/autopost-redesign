@@ -38,8 +38,8 @@
   const SEPARATOR_HIT_HEIGHT = 34;
   const DEFAULT_FONT_FAMILY = 'Aileron';
   const REQUIRED_AILERON_FONT_QUERIES = [
-    '400 24px Aileron', '700 24px Aileron',
-    'normal 24px Aileron', 'bold 24px Aileron'
+    '400 24px Aileron',
+    '700 24px Aileron'
   ];
   const TEMPLATE_BASE_URL = '/assets/template-base.png';
 
@@ -1622,13 +1622,15 @@
   // ============================================================
   // PREVIEW DO EDITOR (PNG client-side)
   // ============================================================
-  function generatePreviewKonva() {
+  async function generatePreviewKonva() {
     const popup = window.open('', '_blank');
     const indicators = layer.find('.selection-indicator');
     const visibleIndicators = [];
     const tWasVisible = transformer && transformer.visible();
     let dataURL = '';
     try {
+      const fontsReady = await waitForTemplateFonts();
+      if (!fontsReady) throw new Error('Fonte Aileron nao carregada');
       indicators.forEach(function (i) {
         if (i.visible()) visibleIndicators.push(i);
         i.visible(false);
@@ -1641,7 +1643,10 @@
       dataURL = stage.toDataURL({ pixelRatio: 1, mimeType: 'image/png' });
     } catch (err) {
       if (popup && !popup.closed) popup.close();
-      showStatus('Preview PNG bloqueado por imagem remota sem CORS. Use Gerar Preview Real (API) para imagens externas.', 'error');
+      const message = /Aileron/i.test(err.message || '')
+        ? 'Preview PNG bloqueado: fonte Aileron 400/700 nao carregou. Verifique os arquivos OTF.'
+        : 'Preview PNG bloqueado por imagem remota sem CORS. Use Gerar Preview Real (API) para imagens externas.';
+      showStatus(message, 'error');
       return;
     } finally {
       applyStageScale();
@@ -1665,6 +1670,7 @@
     showStatus('Gerando preview real...', 'info');
     const popup = window.open('', '_blank');
     try {
+      await waitForTemplateFonts();
       const previewTemplate = buildTemplateSnapshot(true);
       const articleSrc = previewTemplate?.layers?.articleImage?.src || '';
       const res = await fetch('/api/template/preview', {
@@ -1763,7 +1769,11 @@
   // FONTES
   // ============================================================
   async function waitForTemplateFonts() {
-    if (!document.fonts || typeof document.fonts.load !== 'function') return;
+    if (!document.fonts || typeof document.fonts.load !== 'function') {
+      setAileronFontCheckAttrs(false, false);
+      showStatus('Nao foi possivel validar a fonte Aileron neste navegador.', 'error');
+      return false;
+    }
     const missing = [];
     await Promise.all(REQUIRED_AILERON_FONT_QUERIES.map(async function (q) {
       try {
@@ -1772,9 +1782,24 @@
       } catch (err) { missing.push(q); }
     }));
     try { await document.fonts.ready; } catch (e) { /* best-effort */ }
+    const regularOk = document.fonts.check('400 24px Aileron');
+    const boldOk = document.fonts.check('700 24px Aileron');
+    setAileronFontCheckAttrs(regularOk, boldOk);
+    if (!regularOk || !boldOk) {
+      showStatus('Fonte Aileron nao carregada nos pesos 400/700. Verifique os arquivos OTF.', 'error');
+      return false;
+    }
     if (missing.length) {
       showStatus('Fonte Aileron nao carregada nos pesos 400/700. Verifique os arquivos OTF.', 'error');
+      return false;
     }
+    return true;
+  }
+
+  function setAileronFontCheckAttrs(regularOk, boldOk) {
+    if (!document.body) return;
+    document.body.dataset.aileron400 = String(!!regularOk);
+    document.body.dataset.aileron700 = String(!!boldOk);
   }
 
   // ============================================================

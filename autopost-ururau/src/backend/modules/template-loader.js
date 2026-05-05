@@ -68,18 +68,18 @@ export function migrateTemplate(template) {
     };
   }
 
-  // 4. fonts default se ausente
-  if (!t.fonts) {
-    t.fonts = {
-      family: 'Aileron',
-      weights: [400, 700],
-      files: {
-        400: '/assets/fonts/aileron/AileronRegular.otf',
-        700: '/assets/fonts/aileron/AileronBold.otf'
-      },
-      required: true
-    };
-  }
+  // 4. fonte oficial obrigatoria
+  t.fonts = {
+    ...(t.fonts || {}),
+    family: 'Aileron',
+    weights: [400, 700],
+    files: {
+      ...((t.fonts && t.fonts.files) || {}),
+      400: '/assets/fonts/aileron/AileronRegular.otf',
+      700: '/assets/fonts/aileron/AileronBold.otf'
+    },
+    required: true
+  };
 
   // 5. metadados nas layers
   if (t.layers) {

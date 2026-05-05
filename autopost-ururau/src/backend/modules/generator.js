@@ -744,10 +744,9 @@ ${this.getAileronFontFaceCss()}
 
     normalizeFontWeight(value) {
         const weight = String(value || 'normal').trim().toLowerCase();
-        if (weight === '700') return 'bold';
-        if (weight === '400') return 'normal';
-        if (weight === 'bold' || weight === 'normal') return weight;
-        return weight || 'normal';
+        if (weight === '700' || weight === 'bold') return '700';
+        if (weight === '400' || weight === 'normal') return '400';
+        return weight || '400';
     }
 
     getAileronFontFaceCss() {
@@ -755,8 +754,8 @@ ${this.getAileronFontFaceCss()}
         const regular = this.fontDataUrl('AileronRegular.otf');
         const bold = this.fontDataUrl('AileronBold.otf');
         this.aileronFontFaceCss = `
-@font-face { font-family: 'Aileron'; src: url("${regular}") format("opentype"); font-weight: 400; font-style: normal; }
-@font-face { font-family: 'Aileron'; src: url("${bold}") format("opentype"); font-weight: 700; font-style: normal; }`;
+@font-face { font-family: 'Aileron'; src: url("${regular}") format("opentype"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Aileron'; src: url("${bold}") format("opentype"); font-weight: 700; font-style: normal; font-display: block; }`;
         return this.aileronFontFaceCss;
     }
 
