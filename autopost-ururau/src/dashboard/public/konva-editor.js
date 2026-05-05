@@ -705,6 +705,69 @@
     refreshSelectionIndicator();
   }
 
+  async function duplicateLayer(key) {
+    if (!layerMeta[key] || !konvaElements[key]) return;
+    if (FORCED_LOCKED_KEYS.has(key) || layerMeta[key].type === 'lockedImage' || key === 'blackBackground') {
+      showStatus('Esta camada nao pode ser duplicada (' + key + ').', 'info');
+      return;
+    }
+    const snapshot = buildTemplateSnapshot(true);
+    const original = snapshot && snapshot.layers ? snapshot.layers[key] : null;
+    if (!original) {
+      showStatus('Nao foi possivel duplicar: camada nao encontrada no snapshot.', 'error');
+      return;
+    }
+
+    saveUndo();
+    const nextKey = uniqueLayerKey(key);
+    const nextConfig = JSON.parse(JSON.stringify(original));
+    nextConfig.id = nextKey;
+    nextConfig.label = uniqueLayerLabel(original.label || layerMeta[key].label || key);
+    nextConfig.x = Math.round(numOr(nextConfig.x, konvaElements[key].x()) + 20);
+    nextConfig.y = Math.round(numOr(nextConfig.y, konvaElements[key].y()) + 20);
+    nextConfig.locked = false;
+    nextConfig.deletable = true;
+    nextConfig.visible = original.visible !== false;
+    nextConfig.zIndex = insertZIndexAbove(layerMeta[key].zIndex);
+
+    templateData.layers[nextKey] = nextConfig;
+    const meta = readMeta(nextKey, nextConfig);
+    layerMeta[nextKey] = meta;
+    await createKonvaForLayer(nextKey, nextConfig, meta);
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    selectElement(nextKey);
+    showStatus('Camada duplicada: ' + nextKey, 'success');
+  }
+
+  function insertZIndexAbove(baseZ) {
+    const targetZ = numOr(baseZ, 50) + 1;
+    Object.keys(layerMeta).forEach(function (k) {
+      if (layerMeta[k].zIndex >= targetZ) {
+        layerMeta[k].zIndex += 1;
+        if (templateData.layers[k]) templateData.layers[k].zIndex = layerMeta[k].zIndex;
+      }
+    });
+    return targetZ;
+  }
+
+  function uniqueLayerKey(baseKey) {
+    const safeBase = String(baseKey || 'layer').replace(/[^a-zA-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'layer';
+    let i = 1;
+    let key = safeBase + '_copy';
+    while ((templateData.layers && templateData.layers[key]) || konvaElements[key] || layerMeta[key]) {
+      i += 1;
+      key = safeBase + '_copy_' + i;
+    }
+    return key;
+  }
+
+  function uniqueLayerLabel(label) {
+    const base = String(label || 'Camada').replace(/\s+\(copia(?: \d+)?\)$/i, '');
+    return base + ' (copia)';
+  }
+
   function toggleVisible(key) {
     if (!layerMeta[key]) return;
     layerMeta[key].visible = !layerMeta[key].visible;
@@ -974,6 +1037,7 @@
           '<button title="Enviar para tras" onclick="window.layerCmd(\'back\', \'' + key + '\')">⇊</button>' +
           '<button title="Mostrar/Ocultar" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + visIcon + '</button>' +
           '<button title="Bloquear/Desbloquear" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + lockIcon + '</button>' +
+          '<button title="Duplicar" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')">⧉</button>' +
           (meta.deletable ? '<button title="Apagar" onclick="window.layerCmd(\'delete\', \'' + key + '\')">🗑</button>' : '') +
         '</div>' +
       '</div>';
@@ -988,6 +1052,7 @@
     else if (cmd === 'back') moveLayerToBack(key);
     else if (cmd === 'visible') toggleVisible(key);
     else if (cmd === 'lock') toggleLocked(key);
+    else if (cmd === 'duplicate') duplicateLayer(key);
     else if (cmd === 'delete') deleteLayer(key);
   };
 
