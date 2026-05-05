@@ -32,8 +32,8 @@
     "category": {
       "editable": true,
       "label": "Badge Categoria",
-      "x": -479,
-      "y": 1076,
+      "x": 55,
+      "y": 1100,
       "fontSize": 22,
       "fontWeight": "bold",
       "fontFamily": "Aileron, Arial, Helvetica, sans-serif",
@@ -48,11 +48,11 @@
     "title": {
       "editable": true,
       "label": "Titulo",
-      "x": 71,
-      "y": 1295,
+      "x": 55,
+      "y": 1180,
       "maxWidth": 970,
       "fontFamily": "Aileron, Arial, Helvetica, sans-serif",
-      "fontSize": 83,
+      "fontSize": 60,
       "fontWeight": "bold",
       "lineHeight": 72,
       "color": "#FFFFFF",
@@ -62,25 +62,25 @@
     "separator": {
       "editable": true,
       "label": "Linha Decorativa",
-      "x": -280,
+      "x": 55,
+      "y": 1340,
       "width": 220,
       "height": 5,
       "color": "#c11f25",
       "radius": 2,
-      "marginTopAfterTitle": 18,
-      "y": 1281
+      "marginTopAfterTitle": 18
     },
     "summary": {
       "editable": true,
       "label": "Subtitulo / Resumo",
-      "x": 67,
-      "fontSize": 56,
+      "x": 55,
+      "y": 1400,
+      "fontSize": 32,
       "lineHeight": 46,
       "fontFamily": "Aileron, Arial, Helvetica, sans-serif",
       "color": "#E0E0E0",
       "maxCharsPerLine": 36,
       "marginTopAfterLine": 35,
-      "y": 1651,
       "opacity": 1
     },
     "watermark": {

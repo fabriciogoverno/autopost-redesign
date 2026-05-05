@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor Visual de Template</title>
+  <script src="https://cdn.jsdelivr.net/npm/konva@9.3.18/konva.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0a0a1a;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+    .editor-container {
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+      height: 100vh;
+    }
+    .canvas-area {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #0a0a1a;
+      border-radius: 12px;
+      border: 1px solid #1a1a3a;
+      overflow: auto;
+      min-width: 0;
+    }
+    .canvas-area #konva-container { transform-origin: center; }
+    .toolbar {
+      width: 320px;
+      flex-shrink: 0;
+      background: #111122;
+      border: 1px solid #1a1a3a;
+      border-radius: 12px;
+      padding: 18px;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+    .toolbar h3 {
+      font-size: 14px;
+      margin: 0 0 14px;
+      color: #E63946;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .tool-group { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid #1a1a3a; }
+    .tool-group:last-child { border-bottom: none; }
+    .tool-group label { display: block; font-size: 12px; color: #a0a0b0; margin-bottom: 6px; font-weight: 600; }
+    .tool-group input, .tool-group select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0a0a1a;
+      border: 1px solid #1a1a3a;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 13px;
+    }
+    .tool-group input[type="color"] { height: 40px; padding: 4px; cursor: pointer; }
+    .tool-group input[type="range"] { padding: 0; height: 8px; }
+    .tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .btn-editor {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 6px;
+      transition: all 0.2s;
+      font-size: 13px;
+    }
+    .btn-editor.primary { background: #E63946; color: #fff; }
+    .btn-editor.primary:hover { background: #c11f25; }
+    .btn-editor.secondary { background: transparent; color: #fff; border: 1px solid #1a1a3a; }
+    .btn-editor.secondary:hover { border-color: #E63946; color: #E63946; }
+    .element-list { display: flex; flex-direction: column; gap: 6px; }
+    .element-item {
+      padding: 9px 11px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 2px solid transparent;
+    }
+    .element-item:hover { background: rgba(230,57,70,0.08); }
+    .element-item.active { border-color: #E63946; background: rgba(230,57,70,0.12); }
+    .element-type { font-size: 10px; color: #a0a0b0; text-transform: uppercase; }
+    .keyboard-hint { font-size: 11px; color: #666; margin-top: 12px; line-height: 1.5; }
+    .scale-control { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .scale-control span { font-size: 12px; color: #a0a0b0; min-width: 40px; }
+    .scale-control input { flex: 1; }
+    .status-banner {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .status-banner.success { background: rgba(46,196,182,0.12); color: #4dd0c2; display: block; }
+    .status-banner.error { background: rgba(230,57,70,0.12); color: #ff6470; display: block; }
+    .status-banner.info { background: rgba(100,150,255,0.12); color: #6a9bff; display: block; }
+  </style>
+</head>
+<body>
+  <div class="editor-container">
+    <div class="canvas-area">
+      <div id="konva-container"></div>
+    </div>
+
+    <div class="toolbar">
+      <div id="statusBanner" class="status-banner"></div>
+
+      <div class="scale-control">
+        <span>Zoom</span>
+        <input type="range" id="scaleSlider" min="0.2" max="1.0" step="0.05" value="0.45">
+        <span id="scaleValue">45%</span>
+      </div>
+
+      <h3>Elementos</h3>
+      <div class="element-list" id="elementList"></div>
+
+      <h3 style="margin-top:18px">Propriedades</h3>
+      <div id="propertiesPanel">
+        <p style="color:#666;font-size:12px">Selecione um elemento no canvas para editar.</p>
+      </div>
+
+      <div style="margin-top:18px">
+        <button class="btn-editor primary" id="btnSave">Salvar Posicoes</button>
+        <button class="btn-editor secondary" id="btnPreviewKonva">Preview do Editor (PNG)</button>
+        <button class="btn-editor secondary" id="btnPreviewReal">Gerar Preview Real (API)</button>
+        <button class="btn-editor secondary" id="btnReset">Restaurar Padrao</button>
+      </div>
+
+      <div class="keyboard-hint">
+        <strong>Atalhos:</strong><br>
+        Setas = mover 1px<br>
+        Shift+Setas = mover 10px<br>
+        Duplo clique em texto = editar<br>
+        Click no canvas = desselecionar
+      </div>
+    </div>
+  </div>
+
+  <script src="konva-editor.js"></script>
+</body>
+</html>
