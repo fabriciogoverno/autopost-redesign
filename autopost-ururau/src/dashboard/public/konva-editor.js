@@ -14,6 +14,7 @@
   const MIN_BADGE_WIDTH = 150;
   const SEPARATOR_HIT_HEIGHT = 34;
   const DEFAULT_FONT_FAMILY = 'Aileron';
+  const ARTICLE_IMAGE_KEY = 'articleImage';
   const COMPONENT_TYPES = {
     category: 'badge',
     title: 'textBox',
@@ -26,7 +27,8 @@
     title: 'Titulo',
     separator: 'Linha Decorativa',
     summary: 'Subtitulo',
-    watermark: 'Watermark'
+    watermark: 'Watermark',
+    articleImage: 'Imagem da Materia'
   };
   const PRIMARY_LAYER_KEYS = ['category', 'title', 'separator', 'summary', 'watermark'];
 
@@ -81,6 +83,7 @@
     createElements();
     updateElementList();
     setupKeyboard();
+    setupArticleImport();
 
     stage.on('click tap', function (e) {
       if (e.target === stage || e.target === bgImageObj) {
@@ -823,9 +826,134 @@
 
   function updateImageProp(node, prop, value) {
     if (prop === 'x' || prop === 'y') node.setAttr(prop, toNumber(value, node.getAttr(prop)));
-    else if (prop === 'width') node.width(Math.max(1, toNumber(value, node.width())));
-    else if (prop === 'height') node.height(Math.max(1, toNumber(value, node.height())));
+    else if (prop === 'width') {
+      node.width(Math.max(1, toNumber(value, node.width())));
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    } else if (prop === 'height') {
+      node.height(Math.max(1, toNumber(value, node.height())));
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
     else if (prop === 'opacity') node.opacity(clamp(toNumber(value, node.opacity()), 0, 1));
+  }
+
+  function setupArticleImport() {
+    window.addEventListener('message', function (event) {
+      if (event.origin !== window.location.origin) return;
+      const message = event.data || {};
+      if (message.type !== 'autopost:article-data') return;
+      applyArticleData(message.payload || {});
+    });
+  }
+
+  function applyArticleData(article) {
+    const data = {
+      category: cleanImportedText(article.category),
+      title: cleanImportedText(article.title),
+      summary: cleanImportedText(article.summary),
+      image: cleanImportedText(article.image)
+    };
+    if (!data.category && !data.title && !data.summary && !data.image) return;
+
+    saveUndo();
+
+    if (data.category && konvaElements.category) {
+      updateBadgeProp(konvaElements.category, 'text', data.category);
+      const badgeBg = konvaElements.category.findOne('.badge-bg');
+      if (badgeBg) badgeBg.fill(getCategoryColor(data.category, templateData.categoryColors || FALLBACK_CATEGORY_COLORS));
+    }
+    if (data.title && konvaElements.title) konvaElements.title.text(data.title);
+    if (data.summary && konvaElements.summary) konvaElements.summary.text(data.summary);
+    if (data.image) setArticleImage(data.image);
+
+    layer.draw();
+    updateElementList();
+    if (selectedElement) updatePropertiesPanel(selectedElement);
+    refreshSelectionIndicator();
+    showStatus('Dados da materia aplicados ao editor.', 'success');
+  }
+
+  function setArticleImage(url) {
+    loadArticleImage(url, false);
+  }
+
+  function loadArticleImage(url, allowTaintedCanvas) {
+    const existing = konvaElements[ARTICLE_IMAGE_KEY];
+    const image = new Image();
+    if (!allowTaintedCanvas) image.crossOrigin = 'anonymous';
+    image.onload = function () {
+      const node = existing && existing.getClassName() === 'Image'
+        ? existing
+        : new Konva.Image({
+            x: 0,
+            y: 0,
+            width: CANVAS_WIDTH,
+            height: CANVAS_HEIGHT,
+            draggable: true,
+            name: ARTICLE_IMAGE_KEY,
+            id: ARTICLE_IMAGE_KEY,
+            componentType: 'image',
+            transient: true,
+            opacity: existing ? existing.opacity() : 0.92
+          });
+
+      node.image(image);
+      node.setAttr('src', url);
+      node.setAttr('taintedImage', allowTaintedCanvas);
+      applyImageCoverCrop(node, image);
+      setupImportedImageNode(node, existing);
+    };
+    image.onerror = function () {
+      if (!allowTaintedCanvas) {
+        loadArticleImage(url, true);
+        return;
+      }
+      showStatus('Nao foi possivel carregar a imagem principal da materia no editor.', 'error');
+    };
+    image.src = url;
+  }
+
+  function setupImportedImageNode(node, existing) {
+    if (!existing) {
+      setupElementEvents(node, ARTICLE_IMAGE_KEY);
+      layer.add(node);
+      konvaElements[ARTICLE_IMAGE_KEY] = node;
+    } else if (existing !== node) {
+      existing.destroy();
+      setupElementEvents(node, ARTICLE_IMAGE_KEY);
+      layer.add(node);
+      konvaElements[ARTICLE_IMAGE_KEY] = node;
+    }
+    positionArticleImage(node);
+    layer.draw();
+    updateElementList();
+  }
+
+  function positionArticleImage(node) {
+    if (bgImageObj) node.moveAbove(bgImageObj);
+    else node.moveToBottom();
+    PRIMARY_LAYER_KEYS.forEach(function (key) {
+      if (konvaElements[key]) konvaElements[key].moveToTop();
+    });
+  }
+
+  function applyImageCoverCrop(node, image) {
+    const targetWidth = node.width();
+    const targetHeight = node.height();
+    const imageWidth = image.naturalWidth || image.width || targetWidth;
+    const imageHeight = image.naturalHeight || image.height || targetHeight;
+    const scale = Math.max(targetWidth / imageWidth, targetHeight / imageHeight);
+    const cropWidth = targetWidth / scale;
+    const cropHeight = targetHeight / scale;
+    node.crop({
+      x: Math.max(0, (imageWidth - cropWidth) / 2),
+      y: Math.max(0, (imageHeight - cropHeight) / 2),
+      width: cropWidth,
+      height: cropHeight
+    });
+  }
+
+  function cleanImportedText(value) {
+    return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
   }
 
   function setupKeyboard() {
@@ -941,6 +1069,7 @@
     if (!next.layers) next.layers = {};
     Object.keys(konvaElements).forEach(function (key) {
       const node = konvaElements[key];
+      if (node.getAttr('transient')) return;
       if (!next.layers[key]) next.layers[key] = {};
       const target = next.layers[key];
       target.x = Math.round(node.x());
@@ -978,7 +1107,16 @@
     stage.width(CANVAS_WIDTH);
     stage.height(CANVAS_HEIGHT);
     layer.draw();
-    const dataURL = stage.toDataURL({ pixelRatio: 1, mimeType: 'image/png' });
+    let dataURL = '';
+    try {
+      dataURL = stage.toDataURL({ pixelRatio: 1, mimeType: 'image/png' });
+    } catch (err) {
+      applyStageScale();
+      indicators.forEach(function (ind) { ind.visible(true); });
+      layer.draw();
+      showStatus('Preview PNG bloqueado pela imagem remota sem CORS. O editor continua editavel.', 'error');
+      return;
+    }
     applyStageScale();
     indicators.forEach(function (ind) { ind.visible(true); });
     layer.draw();

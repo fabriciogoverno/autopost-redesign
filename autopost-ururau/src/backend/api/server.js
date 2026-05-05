@@ -20,6 +20,7 @@ import scheduler from '../modules/scheduler.js';
 import rollback from '../modules/rollback.js';
 import { logInfo, logSuccess, logError } from '../modules/logger.js';
 import { loadActiveTemplate, saveActiveTemplate, resetActiveTemplate, listTemplateBackups, restoreTemplateBackup } from '../modules/template-loader.js';
+import { scrapeArticleByUrl } from '../modules/article-scraper.js';
 
 const app = express();
 const PORT = process.env.API_PORT || 3001;
@@ -360,15 +361,14 @@ app.post('/api/template/preview', async (req, res) => {
 app.post('/api/template/scrape', async (req, res) => {
   try {
     const { url } = req.body;
-    if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'URL inválida' });
-    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 AutoPost' } });
-    const html = await response.text();
-    const title = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)/i)?.[1]
-      || html.match(/<title>([^<]+)/i)?.[1] || '';
-    const summary = html.match(/<meta[^>]*(property=["']og:description["']|name=["']description["'])[^>]*content=["']([^"']+)/i)?.[2] || '';
-    res.json({ title: title.trim().slice(0, 200), summary: summary.trim().slice(0, 500) });
+    const article = await scrapeArticleByUrl(url);
+    res.json(article);
   } catch (err) {
-    res.status(500).json({ error: `Falha ao extrair URL: ${err.message}` });
+    const isBadRequest = /url invalida/i.test(err.message);
+    res.status(isBadRequest ? 400 : 500).json({
+      success: false,
+      error: `Falha ao extrair URL: ${err.message}`
+    });
   }
 });
 

@@ -11,6 +11,7 @@ export default function TemplatesPage() {
     title: 'Titulo de teste do template',
     summary: 'Resumo de teste para visualizar o preview real.',
     category: 'GERAL',
+    image: '',
   });
   const [previewUrl, setPreviewUrl] = useState('');
   const [categoryColors, setCategoryColors] = useState({ GERAL: '#6c757d' });
@@ -25,6 +26,14 @@ export default function TemplatesPage() {
         const data = await res.json();
         if (cancelled) return;
         if (data?.categoryColors) setCategoryColors(data.categoryColors);
+        if (data?.defaults) {
+          setPreviewForm(p => ({
+            ...p,
+            title: data.defaults.title || p.title,
+            summary: data.defaults.summary || p.summary,
+            category: data.defaults.category || p.category,
+          }));
+        }
       } catch {
         if (!cancelled) {
           setStatus({ type: 'error', message: 'Nao foi possivel carregar o template do backend (porta 3001).' });
@@ -33,6 +42,20 @@ export default function TemplatesPage() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  const sendArticleToEditor = article => {
+    const target = iframeRef.current?.contentWindow;
+    if (!target) return;
+    target.postMessage({
+      type: 'autopost:article-data',
+      payload: {
+        category: article.category || '',
+        title: article.title || '',
+        summary: article.summary || '',
+        image: article.image || '',
+      },
+    }, window.location.origin);
+  };
 
   const scrapeFromUrl = async () => {
     if (!previewForm.url) return;
@@ -44,9 +67,20 @@ export default function TemplatesPage() {
         body: JSON.stringify({ url: previewForm.url }),
       });
       const data = await res.json();
-      if (res.ok) {
-        setPreviewForm(p => ({ ...p, title: data.title || p.title, summary: data.summary || p.summary }));
-        setStatus({ type: 'success', message: 'Dados extraidos.' });
+      if (res.ok && data.success) {
+        const nextArticle = {
+          url: data.url || previewForm.url,
+          title: data.title || previewForm.title,
+          summary: data.summary || previewForm.summary,
+          category: data.category || previewForm.category,
+          image: data.image || previewForm.image,
+        };
+        setPreviewForm(p => ({ ...p, ...nextArticle }));
+        if (data.category) {
+          setCategoryColors(colors => ({ ...colors, [data.category]: colors[data.category] || '#e63946' }));
+        }
+        sendArticleToEditor(nextArticle);
+        setStatus({ type: 'success', message: 'Dados extraidos e aplicados ao editor.' });
       } else {
         setStatus({ type: 'error', message: data.error || 'Falha ao extrair dados da URL.' });
       }
@@ -125,6 +159,7 @@ export default function TemplatesPage() {
               src="/konva-editor.html"
               title="Editor Visual de Template"
               style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+              onLoad={() => { if (previewForm.url) sendArticleToEditor(previewForm); }}
               sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-forms"
             />
           </div>
@@ -135,8 +170,8 @@ export default function TemplatesPage() {
             <Eye size={16} /> Preview real (com conteudo arbitrario)
           </h3>
           <p className="text-xs text-muted-foreground">
-            Gera um PNG real usando o template salvo + o conteudo abaixo. Para
-            posicionar elementos, use o editor a esquerda.
+            Extraia uma URL para preencher categoria, titulo, resumo e imagem no editor.
+            Para posicionar elementos, use o editor a esquerda.
           </p>
 
           <div className="space-y-2">
@@ -149,7 +184,7 @@ export default function TemplatesPage() {
                    onChange={e => setPreviewForm(p => ({ ...p, url: e.target.value }))} />
             <button onClick={scrapeFromUrl} disabled={!previewForm.url}
                     className="w-full border rounded px-2 py-1.5 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">
-              Extrair titulo e resumo do link
+              Extrair dados da materia
             </button>
           </div>
 
@@ -175,6 +210,19 @@ export default function TemplatesPage() {
               {Object.keys(categoryColors).map(c => (<option key={c} value={c}>{c}</option>))}
             </select>
           </div>
+
+          {previewForm.image && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Imagem principal</label>
+              <input className="w-full border rounded px-2 py-1.5 text-sm bg-background"
+                     value={previewForm.image}
+                     onChange={e => {
+                       const image = e.target.value;
+                       setPreviewForm(p => ({ ...p, image }));
+                       sendArticleToEditor({ ...previewForm, image });
+                     }} />
+            </div>
+          )}
 
           <button onClick={generatePreview}
                   className="w-full bg-primary text-primary-foreground rounded px-2 py-2 flex items-center justify-center gap-2 text-sm font-medium hover:opacity-90">
