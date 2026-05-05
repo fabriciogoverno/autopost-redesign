@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Save, RotateCcw, Eye, ExternalLink, Link2 } from 'lucide-react';
 
-const apiBase = 'http://localhost:3001';
+const apiBase = '';
 
 export default function TemplatesPage() {
   const iframeRef = useRef(null);
@@ -57,6 +57,33 @@ export default function TemplatesPage() {
     }, window.location.origin);
   };
 
+  const requestEditorSnapshot = () => new Promise(resolve => {
+    const target = iframeRef.current?.contentWindow;
+    if (!target) return resolve(null);
+    const requestId = `preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const timeout = setTimeout(() => {
+      window.removeEventListener('message', onMessage);
+      resolve(null);
+    }, 1200);
+    const onMessage = event => {
+      if (event.origin !== window.location.origin) return;
+      const message = event.data || {};
+      if (message.type !== 'autopost:template-snapshot-response' || message.requestId !== requestId) return;
+      clearTimeout(timeout);
+      window.removeEventListener('message', onMessage);
+      resolve(message.payload || null);
+    };
+    window.addEventListener('message', onMessage);
+    target.postMessage({ type: 'autopost:template-snapshot-request', requestId }, window.location.origin);
+  });
+
+  const buildPreviewMediaUrl = data => {
+    const rawUrl = data?.url || (data?.mediaPath ? `/api/media?path=${encodeURIComponent(data.mediaPath)}` : '');
+    if (!rawUrl) return '';
+    const separator = rawUrl.includes('?') ? '&' : '?';
+    return `${rawUrl}${separator}_=${Date.now()}`;
+  };
+
   const scrapeFromUrl = async () => {
     if (!previewForm.url) return;
     setStatus({ type: 'info', message: 'Extraindo dados da URL...' });
@@ -91,7 +118,10 @@ export default function TemplatesPage() {
 
   const generatePreview = async () => {
     setStatus({ type: 'info', message: 'Gerando preview real...' });
+    setPreviewUrl('');
     try {
+      const template = await requestEditorSnapshot();
+      const imageUrl = previewForm.image || template?.layers?.articleImage?.src || '';
       const res = await fetch(`${apiBase}/api/template/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -99,17 +129,21 @@ export default function TemplatesPage() {
           title: previewForm.title,
           summary: previewForm.summary,
           category: previewForm.category,
+          imageUrl,
+          image: imageUrl,
+          template,
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.mediaPath) {
-        setPreviewUrl(`${apiBase}/api/media?path=${encodeURIComponent(data.mediaPath)}&_=${Date.now()}`);
+      const data = await res.json().catch(() => ({}));
+      const nextPreviewUrl = buildPreviewMediaUrl(data);
+      if (res.ok && nextPreviewUrl) {
+        setPreviewUrl(nextPreviewUrl);
         setStatus({ type: 'success', message: 'Preview real gerado.' });
       } else {
         setStatus({ type: 'error', message: data.error || 'Falha ao gerar preview.' });
       }
-    } catch {
-      setStatus({ type: 'error', message: 'Erro de conexao ao gerar preview.' });
+    } catch (err) {
+      setStatus({ type: 'error', message: `Erro de conexao ao gerar preview: ${err.message || 'falha desconhecida'}` });
     }
   };
 
@@ -231,7 +265,15 @@ export default function TemplatesPage() {
 
           {previewUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewUrl} alt="preview real" className="w-full rounded border mt-2" />
+            <img
+              src={previewUrl}
+              alt="preview real"
+              className="w-full rounded border mt-2"
+              onError={() => {
+                setPreviewUrl('');
+                setStatus({ type: 'error', message: 'Preview gerado, mas a imagem nao pode ser carregada em /api/media.' });
+              }}
+            />
           )}
         </div>
       </div>

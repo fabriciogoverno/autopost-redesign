@@ -108,6 +108,25 @@
     }
   }
 
+  function showStatusLink(message, url, type) {
+    const banner = document.getElementById('statusBanner');
+    if (!banner) return;
+    banner.textContent = '';
+    banner.className = 'status-banner ' + (type || 'info');
+    banner.style.display = 'block';
+    const span = document.createElement('span');
+    span.textContent = message + ' ';
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Abrir preview';
+    link.style.color = 'inherit';
+    link.style.textDecoration = 'underline';
+    banner.appendChild(span);
+    banner.appendChild(link);
+  }
+
   // ============================================================
   // INIT
   // ============================================================
@@ -1260,8 +1279,17 @@
     window.addEventListener('message', function (event) {
       if (event.origin !== window.location.origin) return;
       const message = event.data || {};
-      if (message.type !== 'autopost:article-data') return;
-      applyArticleData(message.payload || {});
+      if (message.type === 'autopost:article-data') {
+        applyArticleData(message.payload || {});
+        return;
+      }
+      if (message.type === 'autopost:template-snapshot-request') {
+        event.source?.postMessage({
+          type: 'autopost:template-snapshot-response',
+          requestId: message.requestId,
+          payload: buildTemplateSnapshot(true)
+        }, event.origin);
+      }
     });
   }
 
@@ -1595,34 +1623,38 @@
   // PREVIEW DO EDITOR (PNG client-side)
   // ============================================================
   function generatePreviewKonva() {
+    const popup = window.open('', '_blank');
     const indicators = layer.find('.selection-indicator');
-    indicators.forEach(function (i) { i.visible(false); });
+    const visibleIndicators = [];
     const tWasVisible = transformer && transformer.visible();
-    if (transformer) transformer.visible(false);
-    stage.scale({ x: 1, y: 1 });
-    stage.width(CANVAS_WIDTH);
-    stage.height(CANVAS_HEIGHT);
-    layer.draw();
     let dataURL = '';
     try {
+      indicators.forEach(function (i) {
+        if (i.visible()) visibleIndicators.push(i);
+        i.visible(false);
+      });
+      if (transformer) transformer.visible(false);
+      stage.scale({ x: 1, y: 1 });
+      stage.width(CANVAS_WIDTH);
+      stage.height(CANVAS_HEIGHT);
+      layer.draw();
       dataURL = stage.toDataURL({ pixelRatio: 1, mimeType: 'image/png' });
     } catch (err) {
+      if (popup && !popup.closed) popup.close();
+      showStatus('Preview PNG bloqueado por imagem remota sem CORS. Use Gerar Preview Real (API) para imagens externas.', 'error');
+      return;
+    } finally {
       applyStageScale();
-      indicators.forEach(function (i) { i.visible(true); });
+      visibleIndicators.forEach(function (i) { i.visible(true); });
       if (transformer && tWasVisible) transformer.visible(true);
       layer.draw();
-      showStatus('Preview PNG bloqueado por imagem remota sem CORS. O editor segue editavel.', 'error');
-      return;
     }
-    applyStageScale();
-    indicators.forEach(function (i) { i.visible(true); });
-    if (transformer && tWasVisible) transformer.visible(true);
-    layer.draw();
-    const win = window.open();
-    if (win) {
-      win.document.write('<title>Preview do Editor</title><body style="margin:0;background:#0a0a1a;display:flex;justify-content:center;align-items:center;min-height:100vh"><img src="' + dataURL + '" style="max-width:100%;max-height:100vh"></body>');
+    if (popup) {
+      popup.document.write('<title>Preview do Editor</title><body style="margin:0;background:#0a0a1a;display:flex;justify-content:center;align-items:center;min-height:100vh"><img src="' + dataURL + '" style="max-width:100%;max-height:100vh"></body>');
+      popup.document.close();
+      showStatus('Preview PNG do editor gerado.', 'success');
     } else {
-      showStatus('Bloqueador de pop-up impediu abrir o preview.', 'error');
+      showStatus('Preview PNG gerado, mas o bloqueador de pop-up impediu abrir a nova aba.', 'error');
     }
   }
 
@@ -1631,6 +1663,7 @@
   // ============================================================
   async function generatePreviewReal() {
     showStatus('Gerando preview real...', 'info');
+    const popup = window.open('', '_blank');
     try {
       const previewTemplate = buildTemplateSnapshot(true);
       const articleSrc = previewTemplate?.layers?.articleImage?.src || '';
@@ -1648,21 +1681,34 @@
         })
       });
       const data = await res.json().catch(function () { return {}; });
-      if (!res.ok || !data.mediaPath) {
+      const url = normalizePreviewUrl(data);
+      if (!res.ok || !url) {
+        if (popup && !popup.closed) popup.close();
         showStatus('Falha no preview: ' + (data.error || 'erro desconhecido'), 'error');
         return;
       }
-      const url = '/api/media?path=' + encodeURIComponent(data.mediaPath);
-      const win = window.open();
-      if (win) {
-        win.document.write('<title>Preview Real (API)</title><body style="margin:0;background:#0a0a1a;display:flex;justify-content:center;align-items:center;min-height:100vh"><img src="' + url + '" style="max-width:100%;max-height:100vh"></body>');
+      if (popup) {
+        popup.document.write('<title>Preview Real (API)</title><body style="margin:0;background:#0a0a1a;display:flex;justify-content:center;align-items:center;min-height:100vh"><img src="' + escapeAttr(url) + '" style="max-width:100%;max-height:100vh"></body>');
+        popup.document.close();
+        showStatus('Preview real gerado.', 'success');
       } else {
-        showStatus('Bloqueador de pop-up impediu abrir o preview.', 'error');
+        showStatusLink('Preview real gerado, mas o pop-up foi bloqueado.', url, 'success');
       }
-      showStatus('Preview real gerado.', 'success');
     } catch (err) {
-      showStatus('Erro ao gerar preview real.', 'error');
+      if (popup && !popup.closed) popup.close();
+      showStatus('Erro ao gerar preview real: ' + (err.message || 'falha de conexao'), 'error');
     }
+  }
+
+  function normalizePreviewUrl(data) {
+    if (data && data.url) return data.url;
+    if (data && data.mediaPath) return '/api/media?path=' + encodeURIComponent(data.mediaPath);
+    if (data && data.path) return '/api/media?path=' + encodeURIComponent(data.path);
+    return '';
+  }
+
+  function escapeAttr(value) {
+    return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
   // ============================================================

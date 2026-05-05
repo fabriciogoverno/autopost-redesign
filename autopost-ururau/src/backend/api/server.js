@@ -9,7 +9,8 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { join, resolve } from 'path';
+import { existsSync, statSync } from 'fs';
+import { join, resolve, extname, isAbsolute, relative } from 'path';
 import { readFile } from 'fs/promises';
 import database from '../core/database.js';
 import publisher from '../modules/publisher.js';
@@ -316,13 +317,31 @@ app.get('/api/templates', async (req, res) => {
 app.get('/api/media', async (req, res) => {
   try {
     const mediaPath = req.query.path;
-    if (!mediaPath) return res.status(400).json({ error: 'path obrigatório' });
+    if (!mediaPath) return res.status(400).json({ success: false, error: 'path obrigatorio' });
+    const requestedPath = String(mediaPath);
     const allowedRoots = [resolve(process.cwd(), 'output', 'artes'), resolve(process.cwd(), 'output', 'preview')];
-    const absolutePath = resolve(mediaPath);
-    const isAllowed = allowedRoots.some(root => absolutePath.startsWith(root));
-    if (!isAllowed) return res.status(403).json({ error: 'Acesso negado ao arquivo solicitado' });
+    const absolutePath = isAbsolute(requestedPath) ? resolve(requestedPath) : resolve(process.cwd(), requestedPath);
+    const isAllowed = allowedRoots.some(root => {
+      const rel = relative(root, absolutePath);
+      return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel));
+    });
+    if (!isAllowed) return res.status(403).json({ success: false, error: 'Acesso negado ao arquivo solicitado' });
+    if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
+      return res.status(404).json({ success: false, error: 'Arquivo de preview nao encontrado' });
+    }
+    const ext = extname(absolutePath).toLowerCase();
+    const contentType = ext === '.png' ? 'image/png'
+      : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
+        : ext === '.webp' ? 'image/webp'
+          : 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.sendFile(absolutePath);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    logError('GET /api/media', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ============================================================
@@ -353,6 +372,7 @@ app.post('/api/template/preview', async (req, res) => {
   try {
     const template = req.body.template && req.body.template.layers ? req.body.template : loadActiveTemplate();
     const articleImage = req.body.imageUrl || req.body.image || template.layers?.articleImage?.src || '';
+    logInfo(`[template-preview] payload title=${Boolean(req.body.title)} category=${req.body.category || template.defaults?.category || 'GERAL'} image=${Boolean(articleImage)} snapshot=${Boolean(req.body.template?.layers)}`);
     const mock = {
       hash: `preview_${Date.now()}`,
       title: req.body.title || template.defaults?.title || 'Preview',
@@ -363,8 +383,14 @@ app.post('/api/template/preview', async (req, res) => {
     };
     const filled = fillTemplate(template, mock);
     const mediaPath = await generator.renderFromTemplate(filled, mock, 'preview', 'ururau-reels');
-    res.json({ success: true, mediaPath });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const url = `/api/media?path=${encodeURIComponent(mediaPath)}`;
+    logInfo(`[template-preview] generated path=${mediaPath}`);
+    logInfo(`[template-preview] url=${url}`);
+    res.json({ success: true, mediaPath, url });
+  } catch (err) {
+    logError('POST /api/template/preview', err);
+    res.status(500).json({ success: false, error: err.message || 'Falha ao gerar preview' });
+  }
 });
 
 app.post('/api/template/scrape', async (req, res) => {
