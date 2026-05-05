@@ -1092,15 +1092,17 @@
     target.width = Math.round(node.width());
     target.height = Math.round(node.height());
     target.opacity = node.opacity();
+    const src = node.getAttr('src') || node.getAttr('image') || node.getAttr('url');
+    if (src) target.src = src;
   }
 
-  async function saveFromEditor() {
+  function buildTemplateSnapshot(includeTransient) {
     if (!templateData) return;
     const next = JSON.parse(JSON.stringify(templateData));
     if (!next.layers) next.layers = {};
     Object.keys(konvaElements).forEach(function (key) {
       const node = konvaElements[key];
-      if (node.getAttr('transient')) return;
+      if (node.getAttr('transient') && !includeTransient) return;
       if (!next.layers[key]) next.layers[key] = {};
       const target = next.layers[key];
       target.x = Math.round(node.x());
@@ -1113,6 +1115,12 @@
       else if (componentType === 'overlay') persistOverlay(target, node);
       else if (componentType === 'image' || componentType === 'logo') persistImage(target, node);
     });
+    return next;
+  }
+
+  async function saveFromEditor() {
+    if (!templateData) return;
+    const next = buildTemplateSnapshot(false);
     try {
       const res = await fetch('/api/template', {
         method: 'POST',
@@ -1162,6 +1170,8 @@
   async function generatePreviewReal() {
     showStatus('Gerando preview real...', 'info');
     try {
+      const previewTemplate = buildTemplateSnapshot(true);
+      const articleImageLayer = previewTemplate?.layers?.[ARTICLE_IMAGE_KEY] || {};
       const res = await fetch('/api/template/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1170,7 +1180,9 @@
           summary: konvaElements.summary ? konvaElements.summary.text() : DEFAULT_PREVIEW.summary,
           category: konvaElements.category && konvaElements.category.findOne('.badge-text')
             ? konvaElements.category.findOne('.badge-text').text()
-            : DEFAULT_PREVIEW.category
+            : DEFAULT_PREVIEW.category,
+          imageUrl: articleImageLayer.src || '',
+          template: previewTemplate
         })
       });
       const data = await res.json().catch(function () { return {}; });

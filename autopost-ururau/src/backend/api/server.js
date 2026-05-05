@@ -19,7 +19,7 @@ import autoblog from '../modules/autoblog.js';
 import scheduler from '../modules/scheduler.js';
 import rollback from '../modules/rollback.js';
 import { logInfo, logSuccess, logError } from '../modules/logger.js';
-import { loadActiveTemplate, saveActiveTemplate, resetActiveTemplate, listTemplateBackups, restoreTemplateBackup } from '../modules/template-loader.js';
+import { loadActiveTemplate, saveActiveTemplate, resetActiveTemplate, listTemplateBackups, restoreTemplateBackup, fillTemplate } from '../modules/template-loader.js';
 import { scrapeArticleByUrl } from '../modules/article-scraper.js';
 
 const app = express();
@@ -351,10 +351,19 @@ app.post('/api/template/restore', async (req, res) => {
 
 app.post('/api/template/preview', async (req, res) => {
   try {
-    const mock = { hash: `preview_${Date.now()}`, title: req.body.title || 'Preview', summary: req.body.summary || '', category: req.body.category || 'GERAL' };
-    const result = await generator.generate(mock, 'ururau-reels', ['preview']);
-    if (!result.success) return res.status(400).json(result);
-    res.json({ success: true, mediaPath: result.files[0].path });
+    const template = req.body.template && req.body.template.layers ? req.body.template : loadActiveTemplate();
+    const articleImage = req.body.imageUrl || req.body.image || template.layers?.articleImage?.src || '';
+    const mock = {
+      hash: `preview_${Date.now()}`,
+      title: req.body.title || template.defaults?.title || 'Preview',
+      summary: req.body.summary || template.defaults?.summary || '',
+      category: req.body.category || template.defaults?.category || 'GERAL',
+      imageUrl: articleImage,
+      image_url: articleImage
+    };
+    const filled = fillTemplate(template, mock);
+    const mediaPath = await generator.renderFromTemplate(filled, mock, 'preview', 'ururau-reels');
+    res.json({ success: true, mediaPath });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

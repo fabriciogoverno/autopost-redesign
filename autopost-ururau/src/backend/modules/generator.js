@@ -7,8 +7,8 @@
  */
 
 import sharp from 'sharp';
-import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { join, dirname, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { loadTemplate, fillTemplate, wrapTitle, getTemplateBasePath, getTemplateHash } from './template-loader.js';
 import { logInfo, logSuccess, logError, logDebug } from './logger.js';
@@ -18,6 +18,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const OUTPUT_DIR = join(process.cwd(), 'output', 'artes');
+const DASHBOARD_PUBLIC_DIR = join(__dirname, '../../dashboard/public');
+const AILERON_FONT_DIR = join(DASHBOARD_PUBLIC_DIR, 'assets', 'fonts', 'aileron');
 
 /**
  * Classe principal do gerador de artes
@@ -336,27 +338,83 @@ class ArtGenerator {
         const hash = post.hash || 'preview';
         const filePath = join(outDir, `${hash.substring(0, 12)}_${format}.png`);
         const data = template._renderData || {};
-        const category = (data.category || 'GERAL').toUpperCase();
-        const color = template.categoryColors?.[category] || template.categoryColors?.GERAL || '#6c757d';
-        const l = template.layers || {};
-        const titleLines = this.wrapMultiline(data.title || '', l.title?.maxWidth || 970, l.title?.fontSize || 60, 4);
-        const summaryLines = this.wrapMultiline(data.summary || '', l.summary?.maxWidth || 970, l.summary?.fontSize || 32, 5);
-        const titleText = titleLines.map((line, i) => `<tspan x="${l.title?.x || 55}" dy="${i === 0 ? 0 : (l.title?.lineHeight || 72)}">${this.escapeXml(line)}</tspan>`).join('');
-        const summaryText = summaryLines.map((line, i) => `<tspan x="${l.summary?.x || 55}" dy="${i === 0 ? 0 : (l.summary?.lineHeight || 46)}">${this.escapeXml(line)}</tspan>`).join('');
-        const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-          <rect x="${l.category?.x || 55}" y="${l.category?.y || 1100}" width="${Math.max(150, category.length * 18 + (l.category?.paddingX || 24) * 2)}" height="${l.category?.height || 52}" rx="${l.category?.radius || 6}" fill="${color}"/>
-          <text x="${(l.category?.x || 55) + (l.category?.paddingX || 24)}" y="${(l.category?.y || 1100) + (l.category?.fontSize || 22)}" font-size="${l.category?.fontSize || 22}" fill="${l.category?.color || '#fff'}" font-family="Arial" font-weight="bold">${category}</text>
-          <text x="${l.title?.x || 55}" y="${l.title?.y || 1180}" font-size="${l.title?.fontSize || 60}" fill="${l.title?.color || '#fff'}" font-family="Arial" font-weight="bold">${titleText}</text>
-          <rect x="${l.separator?.x || 55}" y="${l.separator?.y || ((l.title?.y || 1180) + 80)}" width="${l.separator?.width || 220}" height="${l.separator?.height || 5}" fill="${l.separator?.color || '#c11f25'}"/>
-          <text x="${l.summary?.x || 55}" y="${l.summary?.y || 1400}" font-size="${l.summary?.fontSize || 32}" fill="${l.summary?.color || '#E0E0E0'}" font-family="Arial">${summaryText}</text>
-          <text x="${l.watermark?.x || 55}" y="${l.watermark?.y || 1880}" font-size="${l.watermark?.fontSize || 18}" fill="${l.watermark?.color || '#fff'}" opacity="${l.watermark?.opacity || 0.5}" font-family="Arial">${this.escapeXml(l.watermark?.text || 'URURAU.COM.BR')}</text>
-        </svg>`;
         const basePath = getTemplateBasePath();
         const base = existsSync(basePath)
             ? await sharp(basePath).resize(width, height).toBuffer()
             : await sharp({ create: { width, height, channels: 4, background: '#050510' } }).png().toBuffer();
-        await sharp(base).composite([{ input: Buffer.from(svg) }]).png({ quality: 95 }).toFile(filePath);
+        const svg = await this.buildLayerTemplateSvg(template, data, width, height);
+
+        await sharp(base)
+            .composite([{ input: Buffer.from(svg) }])
+            .png({ quality: 95 })
+            .toFile(filePath);
+
         return filePath;
+    }
+
+    async buildLayerTemplateSvg(template, data, width, height) {
+        const l = template.layers || {};
+        const categoryLayer = l.category || {};
+        const titleLayer = l.title || {};
+        const summaryLayer = l.summary || {};
+        const separatorLayer = l.separator || {};
+        const watermarkLayer = l.watermark || {};
+        const articleLayer = l.articleImage || {};
+        const articleSource = articleLayer.src || articleLayer.image || articleLayer.url || data.imageUrl || '';
+
+        const category = this.applyTextTransform(data.category || categoryLayer.text || 'GERAL', categoryLayer.textTransform || 'uppercase');
+        const normalizedCategory = this.normalizeCategoryKey(category);
+        const color = categoryLayer.background || template.categoryColors?.[category] ||
+            template.categoryColors?.[normalizedCategory] || template.categoryColors?.GERAL || '#6c757d';
+
+        const categoryX = this.numberValue(categoryLayer.x, 55);
+        const categoryY = this.numberValue(categoryLayer.y, 1100);
+        const categoryFontSize = this.numberValue(categoryLayer.fontSize, 22);
+        const categoryPaddingX = this.numberValue(categoryLayer.paddingX, 24);
+        const categoryHeight = this.numberValue(categoryLayer.height, 52);
+        const categoryLetterSpacing = this.numberValue(categoryLayer.letterSpacing, 0);
+        const categoryWidth = categoryLayer.autoWidth === false
+            ? this.numberValue(categoryLayer.width, 150)
+            : this.calculateBadgeWidth(category, categoryFontSize, categoryPaddingX, categoryLetterSpacing);
+
+        const titleX = this.numberValue(titleLayer.x, 55);
+        const summaryX = this.numberValue(summaryLayer.x, 55);
+        const titleLines = this.wrapMultiline(data.title || '', titleLayer.maxWidth || titleLayer.width || 970, titleLayer.fontSize || 60, 4);
+        const summaryLines = this.wrapMultiline(data.summary || '', summaryLayer.maxWidth || summaryLayer.width || 970, summaryLayer.fontSize || 32, 5);
+        const titleText = titleLines.map((line, i) => `<tspan x="${titleX}" dy="${i === 0 ? 0 : (titleLayer.lineHeight || 72)}">${this.escapeXml(line)}</tspan>`).join('');
+        const summaryText = summaryLines.map((line, i) => `<tspan x="${summaryX}" dy="${i === 0 ? 0 : (summaryLayer.lineHeight || 46)}">${this.escapeXml(line)}</tspan>`).join('');
+        const articleImageSvg = articleSource
+            ? await this.renderSvgImageLayer(articleLayer, articleSource, width, height, { width, height, opacity: 0.92 }, 'articleImage')
+            : '';
+        const overlaySvg = this.getLayerEntriesByType(l, ['overlay'])
+            .map(([key, layer]) => this.renderOverlaySvg(key, layer))
+            .join('');
+        const floatingImageEntries = this.getLayerEntriesByType(l, ['image', 'logo'])
+            .filter(([key]) => key !== 'articleImage');
+        const floatingImageSvg = (await Promise.all(floatingImageEntries
+            .map(([key, layer]) => this.renderSvgImageLayer(layer, layer.src || layer.image || layer.url, width, height, {}, key))))
+            .join('');
+        const lockedHeaderSvg = floatingImageEntries.some(([, layer]) => this.getLayerType('', layer) === 'logo')
+            ? ''
+            : await this.renderLockedHeaderSvg(width);
+
+        return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+          <defs><style type="text/css"><![CDATA[
+${this.getAileronFontFaceCss()}
+          ]]></style></defs>
+          ${articleImageSvg}
+          ${overlaySvg}
+          <g opacity="${this.opacityValue(categoryLayer.opacity, 1)}">
+            <rect x="${categoryX}" y="${categoryY}" width="${categoryWidth}" height="${categoryHeight}" rx="${categoryLayer.borderRadius || categoryLayer.radius || 6}" fill="${this.escapeXmlAttr(color)}"/>
+            <text x="${categoryX + categoryPaddingX}" y="${categoryY + categoryHeight / 2}" font-size="${categoryFontSize}" fill="${this.escapeXmlAttr(categoryLayer.textColor || categoryLayer.color || '#fff')}" ${this.svgTextAttrs(categoryLayer, 'bold')} dominant-baseline="central">${this.escapeXml(category)}</text>
+          </g>
+          <text x="${titleX}" y="${titleLayer.y || 1180}" font-size="${titleLayer.fontSize || 60}" fill="${this.escapeXmlAttr(titleLayer.color || '#fff')}" opacity="${this.opacityValue(titleLayer.opacity, 1)}" ${this.svgTextAttrs(titleLayer, 'bold')}>${titleText}</text>
+          <rect x="${separatorLayer.x || 55}" y="${separatorLayer.y || ((titleLayer.y || 1180) + 80)}" width="${separatorLayer.width || 220}" height="${separatorLayer.height || 5}" fill="${this.escapeXmlAttr(separatorLayer.color || '#c11f25')}" opacity="${this.opacityValue(separatorLayer.opacity, 1)}"/>
+          <text x="${summaryX}" y="${summaryLayer.y || 1400}" font-size="${summaryLayer.fontSize || 32}" fill="${this.escapeXmlAttr(summaryLayer.color || '#E0E0E0')}" opacity="${this.opacityValue(summaryLayer.opacity, 1)}" ${this.svgTextAttrs(summaryLayer, 'normal')}>${summaryText}</text>
+          ${lockedHeaderSvg}
+          ${floatingImageSvg}
+          <text x="${watermarkLayer.x || 55}" y="${watermarkLayer.y || 1880}" font-size="${watermarkLayer.fontSize || 18}" fill="${this.escapeXmlAttr(watermarkLayer.color || '#fff')}" opacity="${this.opacityValue(watermarkLayer.opacity, 0.5)}" ${this.svgTextAttrs(watermarkLayer, 'normal')}>${this.escapeXml(watermarkLayer.text || 'URURAU.COM.BR')}</text>
+        </svg>`;
     }
 
     wrapMultiline(text, maxWidth, fontSize, maxLines = 4) {
@@ -374,7 +432,189 @@ class ArtGenerator {
         return lines;
     }
 
+    calculateBadgeWidth(label, fontSize, paddingX, letterSpacing = 0) {
+        const text = String(label || '');
+        const approximateTextWidth = text.length * Math.max(12, fontSize * 0.62);
+        const trackingWidth = Math.max(0, text.length - 1) * this.numberValue(letterSpacing, 0);
+        return Math.max(150, Math.ceil(approximateTextWidth + trackingWidth + paddingX * 2));
+    }
+
+    numberValue(value, fallback) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+    }
+
+    opacityValue(value, fallback = 1) {
+        const opacity = this.numberValue(value, fallback);
+        return Math.max(0, Math.min(1, opacity));
+    }
+
+    async renderSvgImageLayer(layer = {}, src, canvasWidth, canvasHeight, fallback = {}, key = '') {
+        if (!src) return '';
+        const dataUrl = await this.imageSourceToDataUrl(src);
+        const x = this.numberValue(layer.x, fallback.x || 0);
+        const y = this.numberValue(layer.y, fallback.y || 0);
+        const width = Math.max(1, this.numberValue(layer.width, fallback.width || canvasWidth));
+        const height = Math.max(1, this.numberValue(layer.height, fallback.height || canvasHeight));
+        const opacity = this.opacityValue(layer.opacity, fallback.opacity ?? 1);
+        return `<image data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${width}" height="${height}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="xMidYMid slice" opacity="${opacity}"/>`;
+    }
+
+    renderOverlaySvg(key, layer = {}) {
+        const x = this.numberValue(layer.x, 0);
+        const y = this.numberValue(layer.y, 0);
+        const width = Math.max(1, this.numberValue(layer.width, 1080));
+        const height = Math.max(1, this.numberValue(layer.height, 1920));
+        const color = layer.fill || layer.color || layer.background || '#000000';
+        const radius = this.numberValue(layer.borderRadius ?? layer.radius, 0);
+        const opacity = this.opacityValue(layer.opacity, 0.35);
+        return `<rect data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${this.escapeXmlAttr(color)}" opacity="${opacity}"/>`;
+    }
+
+    async renderLockedHeaderSvg(canvasWidth) {
+        const basePath = getTemplateBasePath();
+        if (!existsSync(basePath)) return '';
+        const headerHeight = 260;
+        const metadata = await sharp(basePath).metadata();
+        const sourceWidth = Math.min(metadata.width || canvasWidth, canvasWidth);
+        const sourceHeight = Math.min(metadata.height || headerHeight, headerHeight);
+        const buffer = await sharp(basePath)
+            .extract({ left: 0, top: 0, width: sourceWidth, height: sourceHeight })
+            .resize(canvasWidth, sourceHeight)
+            .png()
+            .toBuffer();
+        const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+        return `<image data-layer="lockedHeader" x="0" y="0" width="${canvasWidth}" height="${sourceHeight}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="none" opacity="1"/>`;
+    }
+
+    getLayerEntriesByType(layers = {}, types = []) {
+        return Object.entries(layers).filter(([key, layer]) => types.includes(this.getLayerType(key, layer)));
+    }
+
+    getLayerType(key, layer = {}) {
+        if (layer.type) return layer.type;
+        if (key === 'category') return 'badge';
+        if (key === 'separator') return 'shapeLine';
+        if (key === 'title' || key === 'summary' || key === 'watermark') return 'textBox';
+        if (/overlay/i.test(key)) return 'overlay';
+        if (/logo/i.test(key)) return 'logo';
+        if (layer.src || layer.image || layer.url) return 'image';
+        if (typeof layer.width === 'number' && typeof layer.height === 'number') return 'overlay';
+        return 'textBox';
+    }
+
+    async imageSourceToDataUrl(src) {
+        if (!src) return '';
+        if (/^data:/i.test(src)) return src;
+
+        let buffer;
+        let mime = this.mimeFromPath(src);
+        if (/^https?:\/\//i.test(src)) {
+            const response = await fetch(src);
+            if (!response.ok) throw new Error(`Falha ao carregar imagem da materia: HTTP ${response.status}`);
+            buffer = Buffer.from(await response.arrayBuffer());
+            mime = response.headers.get('content-type') || mime;
+        } else {
+            const imagePath = this.resolveImagePath(src);
+            if (!existsSync(imagePath)) throw new Error(`Imagem nao encontrada: ${imagePath}`);
+            buffer = readFileSync(imagePath);
+            mime = this.mimeFromPath(imagePath);
+        }
+
+        return `data:${mime};base64,${buffer.toString('base64')}`;
+    }
+
+    resolveImagePath(src) {
+        const normalized = String(src || '').replace(/\\/g, '/');
+        if (isAbsolute(normalized)) return normalized;
+        const relative = normalized.replace(/^\/+/, '');
+        const candidates = [
+            resolve(process.cwd(), relative),
+            resolve(DASHBOARD_PUBLIC_DIR, relative),
+            resolve(DASHBOARD_PUBLIC_DIR, relative.replace(/^assets\//, 'assets/')),
+            resolve(DASHBOARD_PUBLIC_DIR, relative.replace(/^public\//, '')),
+            resolve(__dirname, '../../../', relative)
+        ];
+        return candidates.find(candidate => existsSync(candidate)) || candidates[0];
+    }
+
+    mimeFromPath(pathValue) {
+        const lower = String(pathValue || '').split('?')[0].toLowerCase();
+        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+        if (lower.endsWith('.webp')) return 'image/webp';
+        if (lower.endsWith('.gif')) return 'image/gif';
+        if (lower.endsWith('.svg')) return 'image/svg+xml';
+        return 'image/png';
+    }
+
+    svgTextAttrs(layer = {}, fallbackWeight = 'normal') {
+        const fontFamily = this.normalizeFontFamily(layer.fontFamily || 'Aileron');
+        const fontWeight = this.normalizeFontWeight(layer.fontWeight || fallbackWeight || 'normal');
+        const letterSpacing = this.numberValue(layer.letterSpacing, 0);
+        return `font-family="${this.escapeXmlAttr(fontFamily)}" font-weight="${this.escapeXmlAttr(fontWeight)}" letter-spacing="${letterSpacing}"`;
+    }
+
+    normalizeFontFamily(value) {
+        const family = String(value || 'Aileron').split(',')[0].trim();
+        if (!family) return 'Aileron';
+        if (/^Aileron(Regular|Bold)?$/i.test(family)) return 'Aileron';
+        if (/^(Arial|Helvetica|sans-serif)$/i.test(family)) return 'Aileron';
+        return family;
+    }
+
+    normalizeFontWeight(value) {
+        const weight = String(value || 'normal').trim().toLowerCase();
+        if (weight === '700') return 'bold';
+        if (weight === '400') return 'normal';
+        if (weight === 'bold' || weight === 'normal') return weight;
+        return weight || 'normal';
+    }
+
+    getAileronFontFaceCss() {
+        if (this.aileronFontFaceCss) return this.aileronFontFaceCss;
+        const regular = this.fontDataUrl('AileronRegular.otf');
+        const bold = this.fontDataUrl('AileronBold.otf');
+        this.aileronFontFaceCss = `
+@font-face { font-family: 'Aileron'; src: url("${regular}") format("opentype"); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'Aileron'; src: url("${bold}") format("opentype"); font-weight: 700; font-style: normal; }`;
+        return this.aileronFontFaceCss;
+    }
+
+    fontDataUrl(fileName) {
+        const fontPath = join(AILERON_FONT_DIR, fileName);
+        if (!existsSync(fontPath)) {
+            throw new Error(`Fonte obrigatoria ausente: ${fontPath}`);
+        }
+        return `data:font/otf;base64,${readFileSync(fontPath).toString('base64')}`;
+    }
+
+    applyTextTransform(value, transform = 'none') {
+        const text = String(value || '');
+        const normalized = this.normalizeTextTransform(transform);
+        if (normalized === 'uppercase') return text.toUpperCase();
+        if (normalized === 'lowercase') return text.toLowerCase();
+        if (normalized === 'capitalize') {
+            return text.toLowerCase().replace(/(^|\s)(\S)/g, (_, lead, letter) => lead + letter.toUpperCase());
+        }
+        return text;
+    }
+
+    normalizeTextTransform(value) {
+        const transform = String(value || 'none').trim().toLowerCase();
+        if (transform === 'uppercase' || transform === 'lowercase' || transform === 'capitalize') return transform;
+        return 'none';
+    }
+
+    normalizeCategoryKey(value) {
+        return String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase();
+    }
+
     escapeXml(v = '') { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    escapeXmlAttr(v = '') { return this.escapeXml(v).replace(/"/g, '&quot;'); }
 
     getStats() {
         return { ...this.stats };
