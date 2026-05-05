@@ -1592,6 +1592,12 @@
     if (!includeArticleSrc && next.layers.articleImage) {
       next.layers.articleImage.src = '';
     }
+    next.layerOrder = Object.keys(next.layers)
+      .sort(function (a, b) {
+        const za = next.layers[a] && typeof next.layers[a].zIndex === 'number' ? next.layers[a].zIndex : 50;
+        const zb = next.layers[b] && typeof next.layers[b].zIndex === 'number' ? next.layers[b].zIndex : 50;
+        return za - zb;
+      });
     return next;
   }
 

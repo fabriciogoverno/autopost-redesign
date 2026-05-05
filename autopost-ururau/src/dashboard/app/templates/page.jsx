@@ -57,21 +57,22 @@ export default function TemplatesPage() {
     }, window.location.origin);
   };
 
-  const requestEditorSnapshot = () => new Promise(resolve => {
+  const requestEditorSnapshot = () => new Promise((resolve, reject) => {
     const target = iframeRef.current?.contentWindow;
-    if (!target) return resolve(null);
+    if (!target) return reject(new Error('Editor visual ainda nao esta carregado.'));
     const requestId = `preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const timeout = setTimeout(() => {
       window.removeEventListener('message', onMessage);
-      resolve(null);
-    }, 1200);
+      reject(new Error('Editor visual nao respondeu com o snapshot atual.'));
+    }, 4000);
     const onMessage = event => {
       if (event.origin !== window.location.origin) return;
       const message = event.data || {};
       if (message.type !== 'autopost:template-snapshot-response' || message.requestId !== requestId) return;
       clearTimeout(timeout);
       window.removeEventListener('message', onMessage);
-      resolve(message.payload || null);
+      if (message.payload?.layers) resolve(message.payload);
+      else reject(new Error('Snapshot do editor veio vazio.'));
     };
     window.addEventListener('message', onMessage);
     target.postMessage({ type: 'autopost:template-snapshot-request', requestId }, window.location.origin);
@@ -122,6 +123,7 @@ export default function TemplatesPage() {
     try {
       const template = await requestEditorSnapshot();
       const imageUrl = previewForm.image || template?.layers?.articleImage?.src || '';
+      if (imageUrl && template?.layers?.articleImage) template.layers.articleImage.src = imageUrl;
       const res = await fetch(`${apiBase}/api/template/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
