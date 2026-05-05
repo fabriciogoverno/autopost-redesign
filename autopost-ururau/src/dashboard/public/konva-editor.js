@@ -11,6 +11,8 @@
   let currentScale = 0.45;
   const CANVAS_WIDTH = 1080;
   const CANVAS_HEIGHT = 1920;
+  const MIN_BADGE_WIDTH = 150;
+  const SEPARATOR_HIT_HEIGHT = 34;
 
   const FALLBACK_CATEGORY_COLORS = {
     OPINIAO: '#e63946', POLITICA: '#1d3557', ESPORTE: '#2a9d8f',
@@ -119,22 +121,31 @@
     const layers = templateData.layers || {};
     const categoryColors = templateData.categoryColors || FALLBACK_CATEGORY_COLORS;
     const defaults = templateData.defaults || {};
-    const previewCategory = (defaults.category || DEFAULT_PREVIEW.category).toUpperCase();
+    const previewCategory = formatCategoryLabel(defaults.category || DEFAULT_PREVIEW.category, layers.category);
     const previewTitle = defaults.title || DEFAULT_PREVIEW.title;
     const previewSummary = defaults.summary || DEFAULT_PREVIEW.summary;
 
     if (layers.category) {
       const cat = layers.category;
       const catLabel = previewCategory;
-      const badgeWidth = Math.max(catLabel.length * 18 + (cat.paddingX || 24) * 2, 150);
-      const badgeColor = categoryColors[catLabel] || categoryColors.GERAL || '#6c757d';
+      const badgeWidth = calculateBadgeWidth(catLabel, cat.fontSize || 22, cat.paddingX || 24);
+      const badgeColor = getCategoryColor(catLabel, categoryColors);
       const configuredBadgeColor = isHexColor(cat.background) ? cat.background : badgeColor;
 
       const badgeGroup = new Konva.Group({
         x: cat.x, y: cat.y,
+        width: badgeWidth,
+        height: cat.height || 52,
         draggable: true,
         name: 'category',
         id: 'category'
+      });
+
+      const badgeHit = new Konva.Rect({
+        width: badgeWidth,
+        height: cat.height || 52,
+        fill: 'rgba(0,0,0,0)',
+        name: 'badge-hit'
       });
 
       const badgeRect = new Konva.Rect({
@@ -156,8 +167,10 @@
         name: 'badge-text'
       });
 
+      badgeGroup.add(badgeHit);
       badgeGroup.add(badgeRect);
       badgeGroup.add(badgeText);
+      resizeBadgeToText(badgeGroup);
       setupElementEvents(badgeGroup, 'category');
       layer.add(badgeGroup);
       konvaElements.category = badgeGroup;
@@ -192,19 +205,41 @@
         sepY = titleY + titleHeight + (sep.marginTopAfterTitle || 18);
       }
 
-      const lineRect = new Konva.Rect({
+      const lineWidth = sep.width || 220;
+      const lineHeight = sep.height || 5;
+      const hitHeight = Math.max(SEPARATOR_HIT_HEIGHT, lineHeight);
+      const lineGroup = new Konva.Group({
         x: sep.x, y: sepY,
-        width: sep.width || 220,
-        height: sep.height || 5,
-        fill: sep.color || '#c11f25',
-        cornerRadius: sep.radius || 2,
+        width: lineWidth,
+        height: hitHeight,
         draggable: true,
         name: 'separator',
         id: 'separator'
       });
-      setupElementEvents(lineRect, 'separator');
-      layer.add(lineRect);
-      konvaElements.separator = lineRect;
+
+      const lineHit = new Konva.Rect({
+        x: 0,
+        y: -Math.round((hitHeight - lineHeight) / 2),
+        width: lineWidth,
+        height: hitHeight,
+        fill: 'rgba(0,0,0,0)',
+        name: 'separator-hit'
+      });
+
+      const lineRect = new Konva.Rect({
+        x: 0, y: 0,
+        width: sep.width || 220,
+        height: lineHeight,
+        fill: sep.color || '#c11f25',
+        cornerRadius: sep.radius || 2,
+        name: 'separator-visible'
+      });
+
+      lineGroup.add(lineHit);
+      lineGroup.add(lineRect);
+      setupElementEvents(lineGroup, 'separator');
+      layer.add(lineGroup);
+      konvaElements.separator = lineGroup;
     }
 
     if (layers.summary) {
@@ -271,6 +306,10 @@
     node.on('dblclick dbltap', function (e) {
       e.cancelBubble = true;
       if (node.getClassName() === 'Text') editTextInline(node, key);
+      if (key === 'category' && node.getClassName() === 'Group') {
+        const badgeText = node.findOne('.badge-text');
+        if (badgeText) editTextInline(badgeText, key);
+      }
     });
     node.on('mouseenter', function () { document.body.style.cursor = 'move'; });
     node.on('mouseleave', function () { document.body.style.cursor = 'default'; });
@@ -360,7 +399,12 @@
       if (finished) return;
       finished = true;
       saveUndo();
-      textNode.text(area.value);
+      if (key === 'category' && textNode.name() === 'badge-text') {
+        textNode.text(formatCategoryLabel(area.value, (templateData.layers || {}).category));
+        resizeBadgeToText(konvaElements.category);
+      } else {
+        textNode.text(area.value);
+      }
       layer.draw();
       if (area.parentNode) area.parentNode.removeChild(area);
       updateElementList();
@@ -424,8 +468,21 @@
 
     if (type === 'Group') {
       const badgeBg = node.findOne('.badge-bg');
-      if (badgeBg) {
-        html += '<div class="tool-group"><label>Cor do Badge</label><input type="color" value="' + colorToHex(badgeBg.fill()) + '" onchange="updateBadgeColor(\'' + key + '\', this.value)"></div>';
+      const badgeText = node.findOne('.badge-text');
+      const separatorVisible = node.findOne('.separator-visible');
+      if (key === 'category' && badgeBg && badgeText) {
+        html += '<div class="tool-group"><label>Texto da categoria</label><input type="text" value="' + escapeHtmlAttr(badgeText.text()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'categoryText\', this.value)"></div>';
+        html += '<div class="tool-row">' +
+          '<div class="tool-group"><label>Largura auto</label><input type="number" value="' + Math.round(badgeBg.width()) + '" disabled></div>' +
+          '<div class="tool-group"><label>Cor do badge</label><input type="color" value="' + colorToHex(badgeBg.fill()) + '" onchange="updateBadgeColor(\'' + key + '\', this.value)"></div>' +
+          '</div>';
+      }
+      if (key === 'separator' && separatorVisible) {
+        html += '<div class="tool-row">' +
+          '<div class="tool-group"><label>Largura</label><input type="number" value="' + Math.round(separatorVisible.width()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'width\', this.value)"></div>' +
+          '<div class="tool-group"><label>Altura visual</label><input type="number" value="' + Math.round(separatorVisible.height()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'height\', this.value)"></div>' +
+          '</div>';
+        html += '<div class="tool-group"><label>Cor</label><input type="color" value="' + colorToHex(separatorVisible.fill()) + '" onchange="updateNodePropFromInput(\'' + key + '\', \'fill\', this.value)"></div>';
       }
     }
     document.getElementById('propertiesPanel').innerHTML = html;
@@ -435,7 +492,11 @@
     const node = konvaElements[key];
     if (!node) return;
     saveUndo();
-    if (prop === 'x' || prop === 'y' || prop === 'width' || prop === 'height' || prop === 'fontSize') {
+    if (node.getClassName() === 'Group' && key === 'category') {
+      updateCategoryGroupProp(node, prop, value);
+    } else if (node.getClassName() === 'Group' && key === 'separator') {
+      updateSeparatorGroupProp(node, prop, value);
+    } else if (prop === 'x' || prop === 'y' || prop === 'width' || prop === 'height' || prop === 'fontSize') {
       node.setAttr(prop, parseFloat(value));
     } else if (prop === 'opacity') {
       node.opacity(parseFloat(value));
@@ -448,22 +509,58 @@
     }
     layer.draw();
     updateElementList();
+    updatePropertiesPanel(key);
     refreshSelectionIndicator();
   }
   window.updateNodePropFromInput = updateNodeProp;
 
   function updateBadgeColor(key, color) {
-    const group = konvaElements[key];
-    if (!group) return;
-    const rect = group.findOne('.badge-bg');
-    if (rect) {
-      saveUndo();
-      rect.fill(color);
-    }
-    layer.draw();
-    refreshSelectionIndicator();
+    updateNodeProp(key, 'badgeColor', color);
   }
   window.updateBadgeColor = updateBadgeColor;
+
+  function updateCategoryGroupProp(group, prop, value) {
+    const badgeBg = group.findOne('.badge-bg');
+    const badgeText = group.findOne('.badge-text');
+    if (prop === 'x' || prop === 'y') {
+      group.setAttr(prop, toNumber(value, group.getAttr(prop)));
+      return;
+    }
+    if (prop === 'categoryText' && badgeText) {
+      badgeText.text(formatCategoryLabel(value, (templateData.layers || {}).category));
+      resizeBadgeToText(group);
+      return;
+    }
+    if ((prop === 'badgeColor' || prop === 'fill') && badgeBg) {
+      badgeBg.fill(value);
+    }
+  }
+
+  function updateSeparatorGroupProp(group, prop, value) {
+    const separatorVisible = group.findOne('.separator-visible');
+    const separatorHit = group.findOne('.separator-hit');
+    if (prop === 'x' || prop === 'y') {
+      group.setAttr(prop, toNumber(value, group.getAttr(prop)));
+      return;
+    }
+    if (!separatorVisible) return;
+    if (prop === 'width') {
+      const width = Math.max(1, Math.round(toNumber(value, separatorVisible.width())));
+      separatorVisible.width(width);
+      if (separatorHit) separatorHit.width(width);
+      group.width(width);
+      return;
+    }
+    if (prop === 'height') {
+      const height = Math.max(1, Math.round(toNumber(value, separatorVisible.height())));
+      separatorVisible.height(height);
+      updateSeparatorHitArea(group);
+      return;
+    }
+    if (prop === 'fill') {
+      separatorVisible.fill(value);
+    }
+  }
 
   function setupKeyboard() {
     document.addEventListener('keydown', function (e) {
@@ -526,11 +623,21 @@
         const badgeText = node.findOne('.badge-text');
         if (badgeBg) {
           target.background = badgeBg.fill();
-          const catLabel = badgeText ? badgeText.text().toUpperCase() : null;
+          const catLabel = badgeText ? formatCategoryLabel(badgeText.text(), target) : null;
           if (catLabel) {
+            if (!next.defaults) next.defaults = {};
+            next.defaults.category = catLabel;
             if (!next.categoryColors) next.categoryColors = {};
             next.categoryColors[catLabel] = badgeBg.fill();
           }
+        }
+      }
+      if (node.getClassName() === 'Group' && key === 'separator') {
+        const separatorVisible = node.findOne('.separator-visible');
+        if (separatorVisible) {
+          target.width = Math.round(separatorVisible.width());
+          target.height = Math.round(separatorVisible.height());
+          target.color = separatorVisible.fill();
         }
       }
     });
@@ -642,6 +749,80 @@
     stage.width(CANVAS_WIDTH * currentScale);
     stage.height(CANVAS_HEIGHT * currentScale);
     layer.batchDraw();
+  }
+
+  function getCategoryColor(label, categoryColors) {
+    const colors = categoryColors || {};
+    const exact = formatCategoryLabel(label, (templateData.layers || {}).category);
+    const normalized = normalizeCategoryKey(exact);
+    return colors[exact] || colors[normalized] || colors.GERAL ||
+      FALLBACK_CATEGORY_COLORS[normalized] || FALLBACK_CATEGORY_COLORS.GERAL;
+  }
+
+  function formatCategoryLabel(value, layerConfig) {
+    const text = String(value == null ? '' : value).trim() || DEFAULT_PREVIEW.category;
+    if (layerConfig?.textTransform === 'uppercase') return text.toUpperCase();
+    return text;
+  }
+
+  function normalizeCategoryKey(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase();
+  }
+
+  function calculateBadgeWidth(label, fontSize, paddingX) {
+    const approximateTextWidth = String(label || '').length * Math.max(12, fontSize * 0.62);
+    return Math.max(MIN_BADGE_WIDTH, Math.ceil(approximateTextWidth + paddingX * 2));
+  }
+
+  function measureBadgeTextWidth(textNode) {
+    if (!textNode) return 0;
+    if (typeof textNode.getTextWidth === 'function') return textNode.getTextWidth();
+    return textNode.width();
+  }
+
+  function resizeBadgeToText(group) {
+    if (!group) return;
+    const badgeBg = group.findOne('.badge-bg');
+    const badgeHit = group.findOne('.badge-hit');
+    const badgeText = group.findOne('.badge-text');
+    if (!badgeBg || !badgeText) return;
+    const catLayer = (templateData.layers || {}).category || {};
+    const paddingX = catLayer.paddingX || badgeText.x() || 24;
+    const height = catLayer.height || badgeBg.height() || 52;
+    const measuredWidth = Math.ceil(measureBadgeTextWidth(badgeText) + paddingX * 2);
+    const width = Math.max(MIN_BADGE_WIDTH, measuredWidth);
+    badgeBg.width(width);
+    badgeBg.height(height);
+    badgeText.x(paddingX);
+    badgeText.y((height - badgeText.fontSize()) / 2 + 2);
+    if (badgeHit) {
+      badgeHit.width(width);
+      badgeHit.height(height);
+    }
+    group.width(width);
+    group.height(height);
+  }
+
+  function updateSeparatorHitArea(group) {
+    if (!group) return;
+    const separatorVisible = group.findOne('.separator-visible');
+    const separatorHit = group.findOne('.separator-hit');
+    if (!separatorVisible || !separatorHit) return;
+    const visualHeight = separatorVisible.height();
+    const hitHeight = Math.max(SEPARATOR_HIT_HEIGHT, visualHeight);
+    separatorHit.y(-Math.round((hitHeight - visualHeight) / 2));
+    separatorHit.height(hitHeight);
+    separatorHit.width(separatorVisible.width());
+    group.width(separatorVisible.width());
+    group.height(hitHeight);
+  }
+
+  function toNumber(value, fallback) {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
   }
 
   function escapeHtmlAttr(v) {
