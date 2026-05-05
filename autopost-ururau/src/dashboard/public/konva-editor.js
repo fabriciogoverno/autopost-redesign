@@ -3,6 +3,7 @@
 
   let stage = null;
   let layer = null;
+  let baseBlackObj = null;
   let bgImageObj = null;
   let templateData = null;
   let konvaElements = {};
@@ -34,7 +35,8 @@
     separator: 'Linha Decorativa',
     summary: 'Subtitulo',
     watermark: 'Watermark',
-    articleImage: 'Imagem da Materia'
+    articleImage: 'Imagem da Materia',
+    bottomGradient: 'Gradiente Inferior'
   };
   const PRIMARY_LAYER_KEYS = ['category', 'title', 'separator', 'summary', 'watermark'];
 
