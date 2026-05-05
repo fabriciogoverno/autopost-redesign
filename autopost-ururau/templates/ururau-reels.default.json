@@ -90,6 +90,8 @@
     "category": "article.category",
     "title": "article.title",
     "summary": "article.summary",
+    "author": "article.author",
+    "date": "article.date",
     "articleImage.src": "article.image",
     "watermark": null
   },
@@ -122,6 +124,10 @@
       "src": "",
       "fitMode": "cover",
       "objectFit": "cover",
+      "focalPoint": {
+        "x": 0.5,
+        "y": 0.5
+      },
       "opacity": 1,
       "rotation": 0,
       "visible": true,

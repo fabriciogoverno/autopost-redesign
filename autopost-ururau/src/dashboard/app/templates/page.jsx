@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Save, RotateCcw, Eye, ExternalLink, Link2 } from 'lucide-react';
 
 const apiBase = '';
+const URURAU_OFFICIAL_RED = '#af0014';
 
 export default function TemplatesPage() {
   const iframeRef = useRef(null);
@@ -12,28 +13,36 @@ export default function TemplatesPage() {
     summary: 'Resumo de teste para visualizar o preview real.',
     category: 'GERAL',
     image: '',
+    author: '',
+    date: '',
   });
   const [previewUrl, setPreviewUrl] = useState('');
-  const [categoryColors, setCategoryColors] = useState({ GERAL: '#6c757d' });
+  const [categoryColors, setCategoryColors] = useState({ GERAL: URURAU_OFFICIAL_RED });
   const [status, setStatus] = useState({ type: '', message: '' });
+  const [editorNonce, setEditorNonce] = useState(Date.now());
+
+  const loadTemplateState = useCallback(async () => {
+    const res = await fetch(`${apiBase}/api/template`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data?.categoryColors) setCategoryColors({ GERAL: URURAU_OFFICIAL_RED, ...data.categoryColors });
+    if (data?.defaults) {
+      setPreviewForm(p => ({
+        ...p,
+        title: data.defaults.title || p.title,
+        summary: data.defaults.summary || p.summary,
+        category: data.defaults.category || p.category,
+      }));
+    }
+    return data;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${apiBase}/api/template`);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
+        await loadTemplateState();
         if (cancelled) return;
-        if (data?.categoryColors) setCategoryColors(data.categoryColors);
-        if (data?.defaults) {
-          setPreviewForm(p => ({
-            ...p,
-            title: data.defaults.title || p.title,
-            summary: data.defaults.summary || p.summary,
-            category: data.defaults.category || p.category,
-          }));
-        }
       } catch {
         if (!cancelled) {
           setStatus({ type: 'error', message: 'Nao foi possivel carregar o template do backend (porta 3001).' });
@@ -41,7 +50,33 @@ export default function TemplatesPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [loadTemplateState]);
+
+  useEffect(() => {
+    const refreshAfterTemplateSave = async () => {
+      setPreviewUrl('');
+      setEditorNonce(Date.now());
+      try {
+        await loadTemplateState();
+        setStatus({ type: 'success', message: 'Template salvo/atualizado. Editor e preview recarregados.' });
+      } catch {
+        setStatus({ type: 'error', message: 'Template salvo, mas nao foi possivel recarregar o estado atual.' });
+      }
+    };
+    const onStorage = event => {
+      if (event.key === 'autopost:template-saved') refreshAfterTemplateSave();
+    };
+    const onMessage = event => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'autopost:template-saved') refreshAfterTemplateSave();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('message', onMessage);
+    };
+  }, [loadTemplateState]);
 
   const sendArticleToEditor = article => {
     const target = iframeRef.current?.contentWindow;
@@ -53,6 +88,9 @@ export default function TemplatesPage() {
         title: article.title || '',
         summary: article.summary || '',
         image: article.image || '',
+        author: article.author || '',
+        date: article.date || '',
+        url: article.url || '',
       },
     }, window.location.origin);
   };
@@ -102,10 +140,12 @@ export default function TemplatesPage() {
           summary: data.summary || previewForm.summary,
           category: data.category || previewForm.category,
           image: data.image || previewForm.image,
+          author: data.author || previewForm.author || '',
+          date: data.date || data.publishedAt || previewForm.date || '',
         };
         setPreviewForm(p => ({ ...p, ...nextArticle }));
         if (data.category) {
-          setCategoryColors(colors => ({ ...colors, [data.category]: colors[data.category] || '#e63946' }));
+          setCategoryColors(colors => ({ ...colors, [data.category]: colors[data.category] || URURAU_OFFICIAL_RED }));
         }
         sendArticleToEditor(nextArticle);
         setStatus({ type: 'success', message: 'Dados extraidos e aplicados ao editor.' });
@@ -121,7 +161,12 @@ export default function TemplatesPage() {
     setStatus({ type: 'info', message: 'Gerando preview real...' });
     setPreviewUrl('');
     try {
-      const template = await requestEditorSnapshot();
+      let template;
+      try {
+        template = await requestEditorSnapshot();
+      } catch {
+        template = await loadTemplateState();
+      }
       const imageUrl = previewForm.image || template?.layers?.articleImage?.src || '';
       if (imageUrl && template?.layers?.articleImage) template.layers.articleImage.src = imageUrl;
       const res = await fetch(`${apiBase}/api/template/preview`, {
@@ -133,6 +178,8 @@ export default function TemplatesPage() {
           category: previewForm.category,
           imageUrl,
           image: imageUrl,
+          author: previewForm.author || template?.articleData?.author || '',
+          date: previewForm.date || template?.articleData?.date || '',
           template,
         }),
       });
@@ -150,7 +197,8 @@ export default function TemplatesPage() {
   };
 
   const reloadEditor = () => {
-    if (iframeRef.current) iframeRef.current.src = iframeRef.current.src;
+    setPreviewUrl('');
+    setEditorNonce(Date.now());
   };
 
   return (
@@ -192,7 +240,7 @@ export default function TemplatesPage() {
           <div className="bg-[#0a0a1a]" style={{ height: 'min(85vh, 980px)' }}>
             <iframe
               ref={iframeRef}
-              src="/konva-editor.html"
+              src={`/konva-editor.html?v=${editorNonce}`}
               title="Editor Visual de Template"
               style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
               onLoad={() => { if (previewForm.url) sendArticleToEditor(previewForm); }}

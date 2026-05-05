@@ -69,16 +69,18 @@ export function migrateTemplate(template) {
     t.canvas = { width: t.source.width, height: t.source.height, background: '#000000' };
   }
 
-  // 3. bindings padrao se ausente
-  if (!t.bindings) {
-    t.bindings = {
-      category: 'article.category',
-      title: 'article.title',
-      summary: 'article.summary',
-      'articleImage.src': 'article.image',
-      watermark: null
-    };
-  }
+  // 3. bindings padrao, mesclados de forma idempotente
+  t.bindings = {
+    category: 'article.category',
+    title: 'article.title',
+    summary: 'article.summary',
+    author: 'article.author',
+    date: 'article.date',
+    'articleImage.src': 'article.image',
+    watermark: null,
+    ...(t.bindings || {})
+  };
+  t.articleData = { ...(t.articleData || {}) };
 
   // 4. fonte oficial obrigatoria
   t.fonts = {
@@ -104,9 +106,14 @@ export function migrateTemplate(template) {
         layer.height = 1920;
         layer.fitMode = 'cover';
         layer.objectFit = 'cover';
+        layer.focalPoint = layer.focalPoint || { x: 0.5, y: 0.5 };
         layer.opacity = 1;
         layer.zIndex = 10;
+        layer.binding = layer.binding || 'article.image';
       }
+      if (key === 'category') layer.binding = layer.binding || 'article.category';
+      if (key === 'title') layer.binding = layer.binding || 'article.title';
+      if (key === 'summary') layer.binding = layer.binding || 'article.summary';
       if (!layer.id) layer.id = key;
       if (typeof layer.zIndex !== 'number') layer.zIndex = defaultZ[key] != null ? defaultZ[key] : 50;
       if (typeof layer.visible !== 'boolean') layer.visible = true;
@@ -159,11 +166,14 @@ export function listTemplates() {
 export function fillTemplate(template, post) {
   if (template.layers) {
     const filled = JSON.parse(JSON.stringify(template));
+    const articleData = filled.articleData || {};
     filled._renderData = {
-      title: post.title || filled.defaults?.title || '',
-      summary: post.summary || filled.defaults?.summary || '',
-      category: (post.category || filled.defaults?.category || 'GERAL').toUpperCase(),
-      imageUrl: post.image_url || post.imageUrl || ''
+      title: post.title || articleData.title || filled.defaults?.title || '',
+      summary: post.summary || articleData.summary || filled.defaults?.summary || '',
+      category: (post.category || articleData.category || filled.defaults?.category || 'GERAL').toUpperCase(),
+      imageUrl: post.image_url || post.imageUrl || articleData.image || '',
+      author: post.author || articleData.author || '',
+      date: post.date || articleData.date || ''
     };
     return filled;
   }
@@ -181,6 +191,7 @@ export function fillTemplate(template, post) {
 
 export function loadActiveTemplate() { return loadTemplate(TEMPLATE_ID); }
 export function saveActiveTemplate(nextTemplate) {
+  nextTemplate = migrateTemplate(nextTemplate);
   validateTemplate(nextTemplate);
   mkdirSync(BACKUPS_DIR, { recursive: true });
   if (existsSync(TEMPLATE_FILE)) copyFileSync(TEMPLATE_FILE, join(BACKUPS_DIR, `${Date.now()}-ururau-reels.json`));

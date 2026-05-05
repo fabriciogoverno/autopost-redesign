@@ -52,7 +52,19 @@
   const DEFAULT_PREVIEW = {
     category: 'GERAL',
     title: 'Titulo de teste do template',
-    summary: 'Subtitulo de teste para voce verificar posicoes.'
+    summary: 'Subtitulo de teste para voce verificar posicoes.',
+    author: '',
+    date: ''
+  };
+
+  const DEFAULT_BINDINGS = {
+    category: 'article.category',
+    title: 'article.title',
+    summary: 'article.summary',
+    author: 'article.author',
+    date: 'article.date',
+    'articleImage.src': 'article.image',
+    watermark: null
   };
 
   // zIndex padrao por chave (usado se a config nao trouxer zIndex)
@@ -135,7 +147,7 @@
     try {
       const res = await fetch('/api/template');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      templateData = await res.json();
+      templateData = normalizeStudioTemplate(await res.json());
     } catch (err) {
       showStatus('Erro ao carregar template. Backend (porta 3001) esta rodando?', 'error');
       return;
@@ -387,6 +399,9 @@
         });
         node.setAttr('componentType', 'image');
         node.setAttr('src', src);
+        node.setAttr('fitMode', config.fitMode || config.objectFit || 'cover');
+        node.setAttr('objectFit', config.objectFit || config.fitMode || 'cover');
+        node.setAttr('focalPoint', config.focalPoint || { x: 0.5, y: 0.5 });
         applyImageCoverCrop(node, image);
         if (placeholder) placeholder.destroy();
         setupElementEvents(node, key);
@@ -614,9 +629,7 @@
   }
 
   function createTextBox(key, config, meta) {
-    const defaultText = key === 'title' ? (templateData.defaults?.title || DEFAULT_PREVIEW.title)
-      : key === 'summary' ? (templateData.defaults?.summary || DEFAULT_PREVIEW.summary)
-      : (config.text || '');
+    const defaultText = resolveLayerTextValue(key, config);
     const node = new Konva.Text({
       x: numOr(config.x, 55),
       y: numOr(config.y, 1180),
@@ -638,6 +651,26 @@
     setupElementEvents(node, key);
     layer.add(node);
     konvaElements[key] = node;
+  }
+
+  function resolveLayerTextValue(key, config) {
+    const bindingValue = getArticleBindingValue(config.binding);
+    if (bindingValue) return bindingValue;
+    if (key === 'title') return templateData.defaults?.title || DEFAULT_PREVIEW.title;
+    if (key === 'summary') return templateData.defaults?.summary || DEFAULT_PREVIEW.summary;
+    if (key === 'category') return templateData.defaults?.category || DEFAULT_PREVIEW.category;
+    return config.text || '';
+  }
+
+  function getArticleBindingValue(binding) {
+    const data = (templateData && templateData.articleData) || {};
+    if (binding === 'article.category') return cleanText(data.category);
+    if (binding === 'article.title') return cleanText(data.title);
+    if (binding === 'article.summary') return cleanText(data.summary);
+    if (binding === 'article.image') return cleanText(data.image);
+    if (binding === 'article.author') return cleanText(data.author);
+    if (binding === 'article.date') return cleanText(data.date);
+    return '';
   }
 
   // ============================================================
@@ -705,6 +738,23 @@
     layer.draw();
     updateElementList();
     refreshSelectionIndicator();
+  }
+
+  function normalizeStudioTemplate(template) {
+    const next = template && typeof template === 'object' ? template : {};
+    next.bindings = { ...DEFAULT_BINDINGS, ...(next.bindings || {}) };
+    next.articleData = { ...(next.articleData || {}) };
+    next.layers = next.layers || {};
+    applyDefaultLayerBinding(next.layers, 'category', 'article.category');
+    applyDefaultLayerBinding(next.layers, 'title', 'article.title');
+    applyDefaultLayerBinding(next.layers, 'summary', 'article.summary');
+    applyDefaultLayerBinding(next.layers, 'articleImage', 'article.image');
+    return next;
+  }
+
+  function applyDefaultLayerBinding(layers, key, binding) {
+    if (!layers || !layers[key]) return;
+    if (!layers[key].binding) layers[key].binding = binding;
   }
 
   async function duplicateLayer(key) {
@@ -1362,24 +1412,43 @@
 
   function applyArticleData(article) {
     const data = {
+      url: cleanText(article.url),
       category: cleanText(article.category),
       title: cleanText(article.title),
       summary: cleanText(article.summary),
-      image: cleanText(article.image)
+      image: cleanText(article.image || article.imageUrl || article.image_url),
+      author: cleanText(article.author),
+      date: cleanText(article.date || article.publishedAt || article.published_at)
     };
-    if (!data.category && !data.title && !data.summary && !data.image) return;
+    if (!data.category && !data.title && !data.summary && !data.image && !data.author && !data.date) return;
     saveUndo();
+    const articleUrlInput = document.getElementById('articleUrlInput');
+    if (articleUrlInput && data.url) articleUrlInput.value = data.url;
+    templateData.articleData = {
+      ...(templateData.articleData || {}),
+      ...Object.fromEntries(Object.entries(data).filter(([, value]) => value))
+    };
+    if (!templateData.defaults) templateData.defaults = {};
 
     if (data.category && konvaElements.category) {
       updateBadgeProp(konvaElements.category, 'text', data.category);
+      templateData.defaults.category = data.category;
       const style = resolveCategoryStyle(data.category);
       const bg = konvaElements.category.findOne('.badge-bg');
       const text = konvaElements.category.findOne('.badge-text');
       if (bg && style.background) bg.fill(style.background);
       if (text && style.textColor) text.fill(style.textColor);
     }
-    if (data.title && konvaElements.title) konvaElements.title.text(data.title);
-    if (data.summary && konvaElements.summary) konvaElements.summary.text(data.summary);
+    if (data.title) {
+      templateData.defaults.title = data.title;
+      setTextByBinding('article.title', data.title, 'title');
+    }
+    if (data.summary) {
+      templateData.defaults.summary = data.summary;
+      setTextByBinding('article.summary', data.summary, 'summary');
+    }
+    if (data.author) setTextByBinding('article.author', data.author, 'author');
+    if (data.date) setTextByBinding('article.date', data.date, 'date');
     if (data.image) loadArticleImageUrl(data.image);
 
     layer.draw();
@@ -1387,6 +1456,55 @@
     if (selectedElement) updatePropertiesPanel(selectedElement);
     refreshSelectionIndicator();
     showStatus('Dados da materia aplicados ao editor.', 'success');
+  }
+
+  function setTextByBinding(binding, value, fallbackKey) {
+    let applied = false;
+    Object.keys(konvaElements).forEach(function (key) {
+      const node = konvaElements[key];
+      const cfg = (templateData.layers && templateData.layers[key]) || {};
+      if (!node || !node.text || cfg.binding !== binding) return;
+      node.text(value);
+      applied = true;
+    });
+    if (!applied && fallbackKey && konvaElements[fallbackKey] && konvaElements[fallbackKey].text) {
+      konvaElements[fallbackKey].text(value);
+    }
+  }
+
+  async function scrapeArticleFromEditor() {
+    const input = document.getElementById('articleUrlInput');
+    const url = cleanText(input && input.value);
+    if (!url) {
+      showStatus('Informe uma URL de materia para extrair.', 'error');
+      return;
+    }
+    showStatus('Extraindo dados da materia...', 'info');
+    try {
+      const res = await fetch('/api/template/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.success) {
+        showStatus(data.error || 'Falha ao extrair dados da materia.', 'error');
+        return;
+      }
+      applyArticleData({
+        url: data.url || url,
+        category: data.category || '',
+        title: data.title || '',
+        summary: data.summary || '',
+        image: data.image || data.imageUrl || data.image_url || '',
+        author: data.author || '',
+        date: data.date || data.publishedAt || data.published_at || ''
+      });
+      if (input) input.value = data.url || url;
+      showStatus('Dados extraidos e aplicados ao template.', 'success');
+    } catch (err) {
+      showStatus('Erro de conexao ao extrair URL: ' + (err.message || 'falha desconhecida'), 'error');
+    }
   }
 
   function loadArticleImageUrl(url) {
@@ -1398,6 +1516,11 @@
     templateData.layers[key].src = url;
     const config = templateData.layers[key];
     const meta = layerMeta[key];
+    if (meta) {
+      meta.visible = true;
+      meta.locked = false;
+      meta.zIndex = DEFAULT_Z_INDEX.articleImage;
+    }
     Object.assign(config, {
       x: 0,
       y: 0,
@@ -1407,7 +1530,9 @@
       objectFit: 'cover',
       opacity: 1,
       visible: true,
-      zIndex: DEFAULT_Z_INDEX.articleImage
+      locked: false,
+      zIndex: DEFAULT_Z_INDEX.articleImage,
+      binding: 'article.image'
     });
 
     // Se ja existe um nó (placeholder ou Image), o substituimos
@@ -1429,12 +1554,21 @@
     const scale = Math.max(tw / iw, th / ih);
     const cw = tw / scale;
     const ch = th / scale;
-    node.crop({
-      x: Math.max(0, (iw - cw) / 2),
-      y: Math.max(0, (ih - ch) / 2),
+    const focal = node.getAttr('focalPoint') || { x: 0.5, y: 0.5 };
+    const fx = clamp01(numOr(focal.x, 0.5));
+    const fy = clamp01(numOr(focal.y, 0.5));
+    const cropX = Math.max(0, Math.min(iw - cw, (iw - cw) * fx));
+    const cropY = Math.max(0, Math.min(ih - ch, (ih - ch) * fy));
+    const crop = {
+      x: cropX,
+      y: cropY,
       width: cw,
       height: ch
-    });
+    };
+    node.crop(crop);
+    node.setAttr('crop', crop);
+    node.setAttr('fitMode', node.getAttr('fitMode') || 'cover');
+    node.setAttr('objectFit', node.getAttr('objectFit') || 'cover');
   }
 
   function makeBlackTransparentImage(image, crop) {
@@ -1610,6 +1744,18 @@
     target.width = Math.round(node.width());
     target.height = Math.round(node.height());
     target.opacity = node.opacity();
+    target.fitMode = node.getAttr('fitMode') || target.fitMode || 'cover';
+    target.objectFit = node.getAttr('objectFit') || target.objectFit || target.fitMode || 'cover';
+    target.focalPoint = node.getAttr('focalPoint') || target.focalPoint || { x: 0.5, y: 0.5 };
+    const crop = node.crop ? node.crop() : node.getAttr('crop');
+    if (crop && crop.width && crop.height) {
+      target.crop = {
+        x: Math.round(numOr(crop.x, 0)),
+        y: Math.round(numOr(crop.y, 0)),
+        width: Math.round(numOr(crop.width, 0)),
+        height: Math.round(numOr(crop.height, 0))
+      };
+    }
     const src = node.getAttr('src') || node.getAttr('image') || node.getAttr('url');
     if (src) target.src = src;
   }
@@ -1682,6 +1828,14 @@
     if (!templateData) return null;
     const next = JSON.parse(JSON.stringify(templateData));
     if (!next.layers) next.layers = {};
+    next.bindings = { ...DEFAULT_BINDINGS, ...(next.bindings || {}) };
+    next.articleData = { ...(templateData.articleData || {}), ...(next.articleData || {}) };
+    next.fonts = {
+      ...(next.fonts || {}),
+      family: DEFAULT_FONT_FAMILY,
+      weights: [400, 700],
+      required: true
+    };
 
     Object.keys(konvaElements).forEach(function (key) {
       const node = konvaElements[key];
@@ -1693,6 +1847,12 @@
       target.y = Math.round(node.y());
       if (typeof node.rotation === 'function') target.rotation = numOr(node.rotation(), 0);
       persistMeta(target, key);
+      if (!target.binding) {
+        if (key === 'category') target.binding = 'article.category';
+        else if (key === 'title') target.binding = 'article.title';
+        else if (key === 'summary') target.binding = 'article.summary';
+        else if (key === 'articleImage') target.binding = 'article.image';
+      }
       if (meta.type === 'badge') persistBadge(next, target, node);
       else if (meta.type === 'shapeLine') persistShapeLine(target, node);
       else if (meta.type === 'textBox') persistTextBox(next, target, key, node);
@@ -1721,6 +1881,7 @@
         const zb = next.layers[b] && typeof next.layers[b].zIndex === 'number' ? next.layers[b].zIndex : 50;
         return za - zb;
       });
+    next.bindings = { ...DEFAULT_BINDINGS, ...(next.bindings || {}) };
     return next;
   }
 
@@ -1738,7 +1899,8 @@
       });
       const result = await res.json().catch(function () { return {}; });
       if (res.ok) {
-        templateData = result.template || next;
+        templateData = normalizeStudioTemplate(result.template || next);
+        notifyTemplateSaved(templateData);
         showStatus('Template salvo com sucesso!', 'success');
       } else {
         showStatus('Erro ao salvar: ' + (result.error || 'falha'), 'error');
@@ -1792,6 +1954,17 @@
     }
   }
 
+  function notifyTemplateSaved(template) {
+    const payload = {
+      type: 'autopost:template-saved',
+      at: Date.now(),
+      templateHash: template && template.id ? template.id : 'ururau-reels'
+    };
+    try { localStorage.setItem('autopost:template-saved', JSON.stringify(payload)); } catch (e) { /* ignore */ }
+    try { if (window.parent && window.parent !== window) window.parent.postMessage(payload, window.location.origin); } catch (e) { /* ignore */ }
+    try { if (window.opener && !window.opener.closed) window.opener.postMessage(payload, window.location.origin); } catch (e) { /* ignore */ }
+  }
+
   // ============================================================
   // PREVIEW REAL (server-side)
   // ============================================================
@@ -1812,6 +1985,8 @@
             ? konvaElements.category.findOne('.badge-text').text()
             : DEFAULT_PREVIEW.category,
           imageUrl: articleSrc,
+          author: previewTemplate.articleData?.author || '',
+          date: previewTemplate.articleData?.date || '',
           template: previewTemplate
         })
       });
@@ -1876,6 +2051,19 @@
   }
 
   function bindToolbarButtons() {
+    const articleUrlInput = document.getElementById('articleUrlInput');
+    if (articleUrlInput) {
+      const savedUrl = templateData?.articleData?.url || '';
+      if (savedUrl && !articleUrlInput.value) articleUrlInput.value = savedUrl;
+      articleUrlInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          scrapeArticleFromEditor();
+        }
+      });
+    }
+    const btnScrapeArticle = document.getElementById('btnScrapeArticle');
+    if (btnScrapeArticle) btnScrapeArticle.addEventListener('click', scrapeArticleFromEditor);
     const btnSave = document.getElementById('btnSave');
     if (btnSave) btnSave.addEventListener('click', saveFromEditor);
     const btnPreviewKonva = document.getElementById('btnPreviewKonva');

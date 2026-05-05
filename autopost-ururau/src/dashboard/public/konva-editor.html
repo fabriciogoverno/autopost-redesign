@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Editor Visual de Template</title>
+  <title>Template Studio Ururau</title>
   <script src="/vendor/konva.min.js"
           onerror="this.onerror=null;var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/konva@9.3.18/konva.min.js';document.head.appendChild(s);"></script>
   <style>
@@ -160,6 +160,13 @@
         <span id="scaleValue">45%</span>
       </div>
 
+      <h3>Materia</h3>
+      <div class="tool-group">
+        <label for="articleUrlInput">URL da materia</label>
+        <input type="url" id="articleUrlInput" placeholder="https://www.ururau.com.br/noticia">
+        <button class="btn-editor secondary" id="btnScrapeArticle" style="margin-top:8px">Extrair dados da materia</button>
+      </div>
+
       <h3>Camadas</h3>
       <div class="element-list" id="elementList"></div>
       <div class="keyboard-hint" style="margin-top:6px">
@@ -172,7 +179,7 @@
       </div>
 
       <div style="margin-top:18px">
-        <button class="btn-editor primary" id="btnSave">Salvar Posicoes</button>
+        <button class="btn-editor primary" id="btnSave">Salvar template</button>
         <button class="btn-editor secondary" id="btnPreviewKonva">Preview do Editor (PNG)</button>
         <button class="btn-editor secondary" id="btnPreviewReal">Gerar Preview Real (API)</button>
         <button class="btn-editor secondary" id="btnReset">Restaurar Padrao</button>

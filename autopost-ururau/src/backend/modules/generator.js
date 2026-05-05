@@ -378,7 +378,7 @@ class ArtGenerator {
             } else if (type === 'gradientOverlay') {
                 fragment = this.renderGradientOverlaySvg(key, layer);
             } else if (type === 'image') {
-                const src = layer.src || layer.image || layer.url || (key === 'articleImage' ? (data.imageUrl || '') : '');
+                const src = layer.src || layer.image || layer.url || (layer.binding === 'article.image' || key === 'articleImage' ? (data.imageUrl || '') : '');
                 if (src) fragment = await this.renderSvgImageLayer(layer, src, width, height, { x: 0, y: 0, width, height, opacity: 1 }, key);
             } else if (type === 'logo') {
                 const src = layer.src || layer.image || layer.url;
@@ -524,21 +524,32 @@ ${this.getAileronFontFaceCss()}
         const maxWidth = this.numberValue(layer.maxWidth || layer.width, 970);
 
         let textContent = '';
+        const boundText = this.valueForArticleBinding(layer.binding, data);
         if (key === 'title') {
-            const lines = this.wrapMultiline(data.title || layer.text || '', maxWidth, fontSize, 4);
+            const lines = this.wrapMultiline(boundText || data.title || layer.text || '', maxWidth, fontSize, 4);
             textContent = lines.map((line, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${this.escapeXml(line)}</tspan>`).join('');
         } else if (key === 'summary') {
-            const lines = this.wrapMultiline(data.summary || layer.text || '', maxWidth, fontSize, 5);
+            const lines = this.wrapMultiline(boundText || data.summary || layer.text || '', maxWidth, fontSize, 5);
             textContent = lines.map((line, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${this.escapeXml(line)}</tspan>`).join('');
         } else if (key === 'watermark') {
             textContent = this.escapeXml(layer.text || 'URURAU.COM.BR');
         } else {
-            // textBox generico (custom): respeita layer.text
-            textContent = this.escapeXml(layer.text || '');
+            const text = boundText || layer.text || '';
+            const lines = this.wrapMultiline(text, maxWidth, fontSize, 5);
+            textContent = lines.map((line, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${this.escapeXml(line)}</tspan>`).join('');
         }
 
         const fallbackWeight = (key === 'title' || key === 'category') ? 'bold' : 'normal';
         return `<text data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" font-size="${fontSize}" fill="${this.escapeXmlAttr(color)}" opacity="${opacity}" ${this.svgTextAttrs(layer, fallbackWeight)}>${textContent}</text>`;
+    }
+
+    valueForArticleBinding(binding, data = {}) {
+        if (binding === 'article.title') return data.title || '';
+        if (binding === 'article.summary') return data.summary || '';
+        if (binding === 'article.category') return data.category || '';
+        if (binding === 'article.author') return data.author || '';
+        if (binding === 'article.date') return data.date || '';
+        return '';
     }
 
     async renderLockedImageSvg(key, layer, canvasWidth) {

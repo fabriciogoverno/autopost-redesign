@@ -371,13 +371,16 @@ app.post('/api/template/restore', async (req, res) => {
 app.post('/api/template/preview', async (req, res) => {
   try {
     const template = req.body.template && req.body.template.layers ? req.body.template : loadActiveTemplate();
-    const articleImage = req.body.imageUrl || req.body.image || template.layers?.articleImage?.src || '';
-    logInfo(`[template-preview] payload title=${Boolean(req.body.title)} category=${req.body.category || template.defaults?.category || 'GERAL'} image=${Boolean(articleImage)} snapshot=${Boolean(req.body.template?.layers)}`);
+    const articleData = template.articleData || {};
+    const articleImage = req.body.imageUrl || req.body.image || template.layers?.articleImage?.src || articleData.image || '';
+    logInfo(`[template-preview] payload title=${Boolean(req.body.title || articleData.title)} category=${req.body.category || articleData.category || template.defaults?.category || 'GERAL'} image=${Boolean(articleImage)} snapshot=${Boolean(req.body.template?.layers)}`);
     const mock = {
       hash: `preview_${Date.now()}`,
-      title: req.body.title || template.defaults?.title || 'Preview',
-      summary: req.body.summary || template.defaults?.summary || '',
-      category: req.body.category || template.defaults?.category || 'GERAL',
+      title: req.body.title || articleData.title || template.defaults?.title || 'Preview',
+      summary: req.body.summary || articleData.summary || template.defaults?.summary || '',
+      category: req.body.category || articleData.category || template.defaults?.category || 'GERAL',
+      author: req.body.author || articleData.author || '',
+      date: req.body.date || articleData.date || '',
       imageUrl: articleImage,
       image_url: articleImage
     };
