@@ -200,7 +200,7 @@
 
     // Garante presenca das camadas obrigatorias mesmo se o JSON antigo nao tiver
     ensureLayer('blackBackground', { type: 'shape', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, color: '#000000', opacity: 1, visible: true, locked: true, deletable: false, zIndex: 0 });
-    ensureLayer('articleImage', { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: 1100, src: '', opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
+    ensureLayer('articleImage', { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, src: '', fitMode: 'cover', objectFit: 'cover', opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
     ensureLayer('lockedHeader', { type: 'lockedImage', x: 0, y: 0, width: CANVAS_WIDTH, height: 260, src: TEMPLATE_BASE_URL, crop: { x: 0, y: 0, width: CANVAS_WIDTH, height: 260 }, opacity: 1, visible: true, locked: true, deletable: false, zIndex: 90 });
 
     // Cria cada layer no Konva. Aguarda imagens.
@@ -280,7 +280,7 @@
         x: numOr(config.x, 0),
         y: numOr(config.y, 0),
         width: Math.max(1, numOr(config.width, CANVAS_WIDTH)),
-        height: Math.max(1, numOr(config.height, 1100)),
+        height: Math.max(1, numOr(config.height, CANVAS_HEIGHT)),
         fill: 'rgba(255,255,255,0.04)',
         stroke: 'rgba(255,255,255,0.25)',
         dash: [10, 8],
@@ -314,7 +314,7 @@
           y: numOr(config.y, 0),
           width: Math.max(1, numOr(config.width, CANVAS_WIDTH)),
           height: Math.max(1, numOr(config.height, 260)),
-          image: image,
+          image: key === 'lockedHeader' ? makeBlackTransparentImage(image, config.crop) : image,
           opacity: clamp01(numOr(config.opacity, 1)),
           visible: meta.visible,
           draggable: false,
@@ -323,7 +323,7 @@
           id: key
         });
         node.setAttr('componentType', 'lockedImage');
-        if (config.crop) {
+        if (config.crop && key !== 'lockedHeader') {
           node.crop({
             x: numOr(config.crop.x, 0),
             y: numOr(config.crop.y, 0),
@@ -355,7 +355,7 @@
           x: placeholder ? placeholder.x() : numOr(config.x, 0),
           y: placeholder ? placeholder.y() : numOr(config.y, 0),
           width: placeholder ? placeholder.width() : numOr(config.width, CANVAS_WIDTH),
-          height: placeholder ? placeholder.height() : numOr(config.height, 1100),
+          height: placeholder ? placeholder.height() : numOr(config.height, CANVAS_HEIGHT),
           image: image,
           opacity: placeholder ? placeholder.opacity() : clamp01(numOr(config.opacity, 1)),
           visible: meta.visible,
@@ -1297,22 +1297,27 @@
   function loadArticleImageUrl(url) {
     const key = 'articleImage';
     if (!templateData.layers[key]) {
-      ensureLayer(key, { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: 1100, src: '', opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
+      ensureLayer(key, { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, src: '', fitMode: 'cover', objectFit: 'cover', opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
       layerMeta[key] = readMeta(key, templateData.layers[key]);
     }
     templateData.layers[key].src = url;
     const config = templateData.layers[key];
     const meta = layerMeta[key];
+    Object.assign(config, {
+      x: 0,
+      y: 0,
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+      fitMode: 'cover',
+      objectFit: 'cover',
+      opacity: 1,
+      visible: true,
+      zIndex: DEFAULT_Z_INDEX.articleImage
+    });
 
     // Se ja existe um nó (placeholder ou Image), o substituimos
     const existing = konvaElements[key];
     if (existing) {
-      // mantemos posicao/dimensao atuais
-      config.x = existing.x();
-      config.y = existing.y();
-      config.width = existing.width();
-      config.height = existing.height();
-      config.opacity = existing.opacity();
       existing.destroy();
       delete konvaElements[key];
     }
@@ -1335,6 +1340,32 @@
       width: cw,
       height: ch
     });
+  }
+
+  function makeBlackTransparentImage(image, crop) {
+    if (!crop) return image;
+    try {
+      const sx = numOr(crop.x, 0);
+      const sy = numOr(crop.y, 0);
+      const sw = Math.max(1, numOr(crop.width, image.naturalWidth || image.width));
+      const sh = Math.max(1, numOr(crop.height, image.naturalHeight || image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
+      const pixels = ctx.getImageData(0, 0, sw, sh);
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        const r = pixels.data[i];
+        const g = pixels.data[i + 1];
+        const b = pixels.data[i + 2];
+        if (r < 16 && g < 16 && b < 16) pixels.data[i + 3] = 0;
+      }
+      ctx.putImageData(pixels, 0, 0);
+      return canvas;
+    } catch (e) {
+      return image;
+    }
   }
 
   function cleanText(v) {

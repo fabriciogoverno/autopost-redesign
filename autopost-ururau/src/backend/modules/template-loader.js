@@ -85,6 +85,16 @@ export function migrateTemplate(template) {
   if (t.layers) {
     const defaultZ = { blackBackground: 0, articleImage: 10, bottomGradient: 20, category: 40, title: 50, separator: 55, summary: 60, lockedHeader: 90, watermark: 100 };
     for (const [key, layer] of Object.entries(t.layers)) {
+      if (key === 'articleImage') {
+        layer.x = 0;
+        layer.y = 0;
+        layer.width = 1080;
+        layer.height = 1920;
+        layer.fitMode = 'cover';
+        layer.objectFit = 'cover';
+        layer.opacity = 1;
+        layer.zIndex = 10;
+      }
       if (!layer.id) layer.id = key;
       if (typeof layer.zIndex !== 'number') layer.zIndex = defaultZ[key] != null ? defaultZ[key] : 50;
       if (typeof layer.visible !== 'boolean') layer.visible = true;

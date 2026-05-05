@@ -378,7 +378,7 @@ class ArtGenerator {
                 fragment = this.renderGradientOverlaySvg(key, layer);
             } else if (type === 'image') {
                 const src = layer.src || layer.image || layer.url || (key === 'articleImage' ? (data.imageUrl || '') : '');
-                if (src) fragment = await this.renderSvgImageLayer(layer, src, width, height, { width, height, opacity: layer.opacity ?? 1 }, key);
+                if (src) fragment = await this.renderSvgImageLayer(layer, src, width, height, { x: 0, y: 0, width, height, opacity: 1 }, key);
             } else if (type === 'logo') {
                 const src = layer.src || layer.image || layer.url;
                 if (src) fragment = await this.renderSvgImageLayer(layer, src, width, height, {}, key);
@@ -564,7 +564,13 @@ ${this.getAileronFontFaceCss()}
                         width: Math.min(metadata.width, Math.round(this.numberValue(crop.width, metadata.width))),
                         height: Math.min(metadata.height, Math.round(this.numberValue(crop.height, metadata.height)))
                     };
-                    const buffer = await sharp(localPath).extract(safeCrop).resize(targetWidth, targetHeight).png().toBuffer();
+                    const extracted = await sharp(localPath)
+                        .extract(safeCrop)
+                        .resize(targetWidth, targetHeight)
+                        .ensureAlpha()
+                        .raw()
+                        .toBuffer({ resolveWithObject: true });
+                    const buffer = await this.blackToTransparentPng(extracted.data, extracted.info);
                     const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
                     return `<image data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${targetWidth}" height="${targetHeight}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="none" opacity="${opacity}"/>`;
                 }
@@ -574,6 +580,17 @@ ${this.getAileronFontFaceCss()}
         }
         // Fallback: tentar renderizar como image normal
         return await this.renderSvgImageLayer(layer, src, canvasWidth, targetHeight + y, { width: targetWidth, height: targetHeight, opacity }, key);
+    }
+
+    async blackToTransparentPng(data, info) {
+        const channels = info.channels || 4;
+        for (let i = 0; i < data.length; i += channels) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            if (r < 16 && g < 16 && b < 16) data[i + 3] = 0;
+        }
+        return sharp(data, { raw: info }).png().toBuffer();
     }
 
     wrapMultiline(text, maxWidth, fontSize, maxLines = 4) {
