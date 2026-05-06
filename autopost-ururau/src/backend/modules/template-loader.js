@@ -1,163 +1,226 @@
-/**
- * AutoPost Ururau — Template Loader
- * Carrega, valida e prepara templates JSON para renderização
- * Fase 2 — Gerador
- */
-
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { join, dirname } from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
 const TEMPLATES_DIR = join(__dirname, '../../../templates');
+const TEMPLATE_ID = 'ururau-reels';
+const TEMPLATE_FILE = join(TEMPLATES_DIR, `${TEMPLATE_ID}.json`);
+const TEMPLATE_DEFAULT_FILE = join(TEMPLATES_DIR, `${TEMPLATE_ID}.default.json`);
+const BACKUPS_DIR = join(TEMPLATES_DIR, 'backups');
+const TEMPLATE_BASE_FILE = join(TEMPLATES_DIR, 'assets', 'template-base.png');
+const URURAU_OFFICIAL_RED = '#af0014';
 
-/**
- * Carrega template JSON do disco
- * @param {string} templateId - ID do template (ex: 'ururau-reels')
- * @returns {Object} - Template parseado e validado
- */
-export function loadTemplate(templateId) {
-    const templatePath = join(TEMPLATES_DIR, `${templateId}.json`);
-
-    if (!existsSync(templatePath)) {
-        throw new Error(`Template não encontrado: ${templatePath}`);
-    }
-
-    const template = JSON.parse(readFileSync(templatePath, 'utf-8'));
-    validateTemplate(template);
-
-    return template;
+export function loadTemplate(templateId = TEMPLATE_ID) {
+  const templatePath = join(TEMPLATES_DIR, `${templateId}.json`);
+  if (!existsSync(templatePath)) throw new Error(`Template não encontrado: ${templatePath}`);
+  const raw = JSON.parse(readFileSync(templatePath, 'utf-8'));
+  const template = migrateTemplate(raw);
+  validateTemplate(template);
+  return template;
 }
 
 /**
- * Valida estrutura do template
- * @param {Object} template 
+ * Migra templates de versoes antigas para o schema atual.
+ * - schemaVersion ausente => assume 1 (sem categoryStyles, sem bindings, sem layers metadata completa)
+ * - categoryColors sem categoryStyles => gera categoryStyles a partir do colors
+ * - bottomGradient como overlay solido => mantem como esta (compat),
+ *   mas se vier sem colorStops e o frontend ja interpreta como gradient,
+ *   o JSON novo (v2+) ja usa type: gradientOverlay.
+ * - layers sem zIndex/visible/locked/deletable/rotation => preenche com defaults seguros.
+ *
+ * Idempotente: chamar 2x produz o mesmo resultado.
  */
-function validateTemplate(template) {
-    const required = ['id', 'name', 'dimensions', 'elements'];
-    for (const key of required) {
-        if (!template[key]) {
-            throw new Error(`Template inválido: campo obrigatório '${key}' ausente`);
-        }
+export function migrateTemplate(template) {
+  if (!template || typeof template !== 'object') return template;
+  const t = JSON.parse(JSON.stringify(template));
+  const version = Number(t.schemaVersion || 1);
+
+  // 1. categoryStyles a partir de categoryColors legacy
+  if (t.categoryColors && !t.categoryStyles) {
+    t.categoryStyles = {};
+    for (const [k, v] of Object.entries(t.categoryColors)) {
+      t.categoryStyles[k] = { background: v, textColor: '#FFFFFF' };
     }
-
-    if (!template.dimensions.width || !template.dimensions.height) {
-        throw new Error('Template inválido: dimensions deve ter width e height');
+  }
+  // Garante categoryColors existir (compat com codigo legado que le de la)
+  if (t.categoryStyles && !t.categoryColors) {
+    t.categoryColors = {};
+    for (const [k, v] of Object.entries(t.categoryStyles)) {
+      t.categoryColors[k] = v.background;
     }
-
-    if (!Array.isArray(template.elements) || template.elements.length === 0) {
-        throw new Error('Template inválido: elements deve ser array não-vazio');
+  }
+  t.categoryStyles = {
+    ...(t.categoryStyles || {}),
+    GERAL: {
+      background: (t.categoryStyles && t.categoryStyles.GERAL && t.categoryStyles.GERAL.background) || URURAU_OFFICIAL_RED,
+      textColor: (t.categoryStyles && t.categoryStyles.GERAL && t.categoryStyles.GERAL.textColor) || '#FFFFFF'
     }
+  };
+  t.categoryColors = {
+    ...(t.categoryColors || {}),
+    GERAL: (t.categoryColors && t.categoryColors.GERAL) || t.categoryStyles.GERAL.background || URURAU_OFFICIAL_RED
+  };
 
-    // Valida elementos
-    for (const el of template.elements) {
-        if (!el.id || !el.type) {
-            throw new Error(`Elemento inválido: id e type são obrigatórios`);
-        }
+  // 2. canvas a partir de source
+  if (!t.canvas && t.source?.width && t.source?.height) {
+    t.canvas = { width: t.source.width, height: t.source.height, background: '#000000' };
+  }
 
-        const validTypes = ['text', 'shape', 'badge', 'line', 'image'];
-        if (!validTypes.includes(el.type)) {
-            throw new Error(`Elemento '${el.id}': tipo '${el.type}' não suportado`);
-        }
-    }
-}
+  // 3. bindings padrao, mesclados de forma idempotente
+  t.bindings = {
+    category: 'article.category',
+    title: 'article.title',
+    summary: 'article.summary',
+    author: 'article.author',
+    date: 'article.date',
+    'articleImage.src': 'article.image',
+    watermark: null,
+    ...(t.bindings || {})
+  };
+  t.articleData = { ...(t.articleData || {}) };
 
-/**
- * Lista todos os templates disponíveis
- * @returns {Array} - Lista de {id, name, description}
- */
-export function listTemplates() {
-    const { readdirSync } = await import('fs');
-    const files = readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json'));
+  // 4. fonte oficial obrigatoria
+  t.fonts = {
+    ...(t.fonts || {}),
+    family: 'Aileron',
+    weights: [400, 700],
+    files: {
+      ...((t.fonts && t.fonts.files) || {}),
+      400: '/assets/fonts/aileron/AileronRegular.otf',
+      700: '/assets/fonts/aileron/AileronBold.otf'
+    },
+    required: true
+  };
 
-    return files.map(f => {
-        const template = JSON.parse(readFileSync(join(TEMPLATES_DIR, f), 'utf-8'));
-        return {
-            id: template.id,
-            name: template.name,
-            description: template.description,
-            dimensions: template.dimensions
+  // 5. metadados nas layers
+  if (t.layers) {
+    const defaultZ = { blackBackground: 0, articleImage: 10, bottomGradient: 20, category: 40, title: 50, separator: 55, summary: 60, lockedHeader: 90, watermark: 100 };
+    for (const [key, layer] of Object.entries(t.layers)) {
+      if (key === 'articleImage') {
+        layer.x = 0;
+        layer.y = 0;
+        layer.width = 1080;
+        layer.height = 1920;
+        layer.fitMode = 'cover';
+        layer.objectFit = 'cover';
+        layer.focalPoint = layer.focalPoint || { x: 0.5, y: 0.5 };
+        layer.focalX = typeof layer.focalX === 'number' ? layer.focalX : (typeof layer.focalPoint.x === 'number' ? layer.focalPoint.x : 0.5);
+        layer.focalY = typeof layer.focalY === 'number' ? layer.focalY : (typeof layer.focalPoint.y === 'number' ? layer.focalPoint.y : 0.5);
+        layer.focalPoint = { x: layer.focalX, y: layer.focalY };
+        layer.zoom = typeof layer.zoom === 'number' ? layer.zoom : 1;
+        layer.panX = typeof layer.panX === 'number' ? layer.panX : 0;
+        layer.panY = typeof layer.panY === 'number' ? layer.panY : 0;
+        layer.opacity = 1;
+        layer.zIndex = 10;
+        layer.binding = layer.binding || 'article.image';
+      }
+      if (key === 'category') layer.binding = layer.binding || 'article.category';
+      if (key === 'title') layer.binding = layer.binding || 'article.title';
+      if (key === 'summary') layer.binding = layer.binding || 'article.summary';
+      if (!layer.id) layer.id = key;
+      if (typeof layer.zIndex !== 'number') layer.zIndex = defaultZ[key] != null ? defaultZ[key] : 50;
+      if (typeof layer.visible !== 'boolean') layer.visible = true;
+      if (typeof layer.locked !== 'boolean') layer.locked = (key === 'blackBackground' || key === 'lockedHeader');
+      if (typeof layer.deletable !== 'boolean') {
+        layer.deletable = !(key === 'blackBackground' || key === 'lockedHeader' || key === 'category' || key === 'title' || key === 'separator' || key === 'summary' || key === 'watermark');
+      }
+      if (typeof layer.opacity !== 'number') layer.opacity = 1;
+      if (typeof layer.rotation !== 'number') layer.rotation = 0;
+      if (key === 'lockedHeader') {
+        layer.shadow = {
+          color: layer.shadow?.color || 'rgba(0,0,0,0.72)',
+          blur: typeof layer.shadow?.blur === 'number' ? layer.shadow.blur : 16,
+          offsetX: typeof layer.shadow?.offsetX === 'number' ? layer.shadow.offsetX : 0,
+          offsetY: typeof layer.shadow?.offsetY === 'number' ? layer.shadow.offsetY : 7,
+          opacity: typeof layer.shadow?.opacity === 'number' ? layer.shadow.opacity : 0.52
         };
-    });
+        layer.outline = {
+          color: layer.outline?.color || '#000000',
+          width: typeof layer.outline?.width === 'number' ? layer.outline.width : 0.9,
+          opacity: typeof layer.outline?.opacity === 'number' ? layer.outline.opacity : 0.7
+        };
+      }
+    }
+  }
+
+  // 6. atualiza schemaVersion
+  if (version < 2) t.schemaVersion = 2;
+  return t;
 }
 
-/**
- * Preenche placeholders no template com dados da notícia
- * @param {Object} template - Template original
- * @param {Object} post - Dados da notícia
- * @returns {Object} - Template com valores substituídos
- */
+function validateTemplate(template) {
+  const isLayerSchema = !!template.layers;
+  if (isLayerSchema) {
+    if (!template.source?.width || !template.source?.height) throw new Error('Template layers inválido');
+    return;
+  }
+  const required = ['id', 'name', 'dimensions', 'elements'];
+  for (const key of required) if (!template[key]) throw new Error(`Template inválido: '${key}' ausente`);
+}
+
+export function listTemplates() {
+  const files = readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json') && !f.endsWith('.default.json'));
+  return files.map(f => {
+    const t = JSON.parse(readFileSync(join(TEMPLATES_DIR, f), 'utf-8'));
+    return { id: t.id || f.replace('.json', ''), name: t.name, description: t.description, dimensions: t.dimensions || t.source };
+  });
+}
+
 export function fillTemplate(template, post) {
-    const filled = JSON.parse(JSON.stringify(template)); // deep clone
-
-    // Mapeia categoria para badge
-    const categoryKey = (post.category || 'geral').toLowerCase();
-    const catConfig = template.categories?.[categoryKey] || template.categories?.['geral'];
-
-    for (const el of filled.elements) {
-        // Substitui placeholders {{title}}, {{summary}}, {{category}}
-        if (el.text && typeof el.text === 'string') {
-            el.text = el.text
-                .replace(/{{title}}/g, post.title || '')
-                .replace(/{{summary}}/g, post.summary || '')
-                .replace(/{{category}}/g, catConfig?.badgeText || categoryKey.toUpperCase());
-        }
-
-        // Aplica cor do badge baseado na categoria
-        if (el.type === 'badge' && el.id === 'category_badge' && catConfig) {
-            el.background = catConfig.badgeColor;
-        }
-    }
-
+  if (template.layers) {
+    const filled = JSON.parse(JSON.stringify(template));
+    const articleData = filled.articleData || {};
+    filled._renderData = {
+      title: post.title || articleData.title || filled.defaults?.title || '',
+      summary: post.summary || articleData.summary || filled.defaults?.summary || '',
+      category: (post.category || articleData.category || filled.defaults?.category || 'GERAL').toUpperCase(),
+      imageUrl: post.image_url || post.imageUrl || articleData.image || '',
+      author: post.author || articleData.author || '',
+      date: post.date || articleData.date || ''
+    };
     return filled;
-}
-
-/**
- * Trunca texto para caber no template
- * @param {string} text 
- * @param {number} maxLength 
- * @returns {string}
- */
-export function truncateText(text, maxLength) {
-    if (!text || text.length <= maxLength) return text || '';
-    return text.substring(0, maxLength - 3) + '...';
-}
-
-/**
- * Quebra título em múltiplas linhas respeitando largura máxima
- * @param {string} title 
- * @param {number} maxWidth - Largura máxima em pixels
- * @param {number} fontSize - Tamanho da fonte
- * @returns {Array} - Array de strings (linhas)
- */
-export function wrapTitle(title, maxWidth, fontSize) {
-    if (!title) return [''];
-
-    // Estimativa: ~0.55 da largura do fontSize por caractere (sans-serif bold)
-    const avgCharWidth = fontSize * 0.55;
-    const maxCharsPerLine = Math.floor(maxWidth / avgCharWidth);
-
-    const words = title.split(' ');
-    const lines = [];
-    let currentLine = '';
-
-    for (const word of words) {
-        if ((currentLine + ' ' + word).trim().length <= maxCharsPerLine) {
-            currentLine = (currentLine + ' ' + word).trim();
-        } else {
-            if (currentLine) lines.push(currentLine);
-            currentLine = word;
-        }
+  }
+  const filled = JSON.parse(JSON.stringify(template));
+  const categoryKey = (post.category || 'geral').toLowerCase();
+  const catConfig = template.categories?.[categoryKey] || template.categories?.['geral'];
+  for (const el of filled.elements) {
+    if (el.text && typeof el.text === 'string') {
+      el.text = el.text.replace(/{{title}}/g, post.title || '').replace(/{{summary}}/g, post.summary || '').replace(/{{category}}/g, catConfig?.badgeText || categoryKey.toUpperCase());
     }
-
-    if (currentLine) lines.push(currentLine);
-
-    // Limita a 5 linhas
-    if (lines.length > 5) {
-        return lines.slice(0, 4).concat([lines[4].substring(0, maxCharsPerLine - 3) + '...']);
-    }
-
-    return lines;
+    if (el.type === 'badge' && el.id === 'category_badge' && catConfig) el.background = catConfig.badgeColor;
+  }
+  return filled;
 }
+
+export function loadActiveTemplate() { return loadTemplate(TEMPLATE_ID); }
+export function saveActiveTemplate(nextTemplate) {
+  nextTemplate = migrateTemplate(nextTemplate);
+  validateTemplate(nextTemplate);
+  mkdirSync(BACKUPS_DIR, { recursive: true });
+  if (existsSync(TEMPLATE_FILE)) copyFileSync(TEMPLATE_FILE, join(BACKUPS_DIR, `${Date.now()}-ururau-reels.json`));
+  writeFileSync(TEMPLATE_FILE, JSON.stringify(nextTemplate, null, 2));
+  return nextTemplate;
+}
+export function resetActiveTemplate() {
+  if (!existsSync(TEMPLATE_DEFAULT_FILE)) throw new Error('Template default não encontrado');
+  const tpl = JSON.parse(readFileSync(TEMPLATE_DEFAULT_FILE, 'utf-8'));
+  saveActiveTemplate(tpl);
+  return tpl;
+}
+export function listTemplateBackups() {
+  if (!existsSync(BACKUPS_DIR)) return [];
+  return readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json')).sort().reverse();
+}
+export function restoreTemplateBackup(name) {
+  const p = join(BACKUPS_DIR, name);
+  if (!existsSync(p)) throw new Error('Backup não encontrado');
+  const tpl = JSON.parse(readFileSync(p, 'utf-8'));
+  saveActiveTemplate(tpl);
+  return tpl;
+}
+export function getTemplateHash(template) { return crypto.createHash('sha1').update(JSON.stringify(template)).digest('hex'); }
+export function getTemplateBasePath() { return TEMPLATE_BASE_FILE; }
+export function wrapTitle(title, maxWidth, fontSize) { const avgCharWidth = fontSize * 0.55; const maxCharsPerLine = Math.floor(maxWidth / avgCharWidth); const words = (title || '').split(' '); const lines=[]; let current=''; for (const w of words){ if((current+' '+w).trim().length<=maxCharsPerLine) current=(current+' '+w).trim(); else { if(current) lines.push(current); current=w; } } if(current) lines.push(current); return lines.length>5 ? lines.slice(0,4).concat([`${lines[4].slice(0, maxCharsPerLine-3)}...`]) : lines; }

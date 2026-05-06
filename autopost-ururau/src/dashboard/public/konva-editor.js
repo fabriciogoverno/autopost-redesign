@@ -1,0 +1,3624 @@
+/**
+ * Editor visual Konva — Ururau Reels
+ *
+ * Sistema real de camadas: cada layer tem id, type, x, y, width, height,
+ * opacity, visible, locked, deletable, zIndex. A ordem visual no Konva e
+ * no preview real (backend) e' determinada pelo zIndex.
+ *
+ * Stack canonico (zIndex padrao):
+ *    0  blackBackground   (fundo preto solido — locked, nao deletavel)
+ *   10  articleImage      (imagem da materia)
+ *   20  bottomGradient    (overlay/gradiente sobre a imagem)
+ *   40  category          (badge da editoria)
+ *   50  title
+ *   55  separator
+ *   60  summary
+ *   90  lockedHeader      (logo + 19 ANOS + icone U — extraido do PNG base)
+ *  100  watermark
+ *
+ * UI de camadas: subir/descer, frente/tras, ocultar, bloquear, apagar.
+ */
+
+(function () {
+  'use strict';
+
+  let stage = null;
+  let layer = null;
+  let templateData = null;
+  let konvaElements = {};        // key -> Konva node
+  let layerMeta = {};            // key -> { id, type, zIndex, visible, locked, deletable, label }
+  let selectedElement = null;
+  let undoStack = [];
+  let copiedElementKey = null;
+  let currentScale = 0.5;
+  let transformer = null;        // Konva.Transformer global, anexado ao layer
+
+  const CANVAS_WIDTH = 1080;
+  const CANVAS_HEIGHT = 1920;
+  const MIN_BADGE_WIDTH = 150;
+  const SEPARATOR_HIT_HEIGHT = 34;
+  const DEFAULT_FONT_FAMILY = 'Aileron';
+  const URURAU_OFFICIAL_RED = '#af0014';
+  const REQUIRED_AILERON_FONT_QUERIES = [
+    '400 24px Aileron',
+    '700 24px Aileron'
+  ];
+  const TEMPLATE_BASE_URL = '/assets/template-base.png';
+
+  const FALLBACK_CATEGORY_COLORS = {
+    OPINIAO: URURAU_OFFICIAL_RED, POLITICA: URURAU_OFFICIAL_RED, ESPORTE: URURAU_OFFICIAL_RED,
+    SEGURANCA: URURAU_OFFICIAL_RED, ECONOMIA: URURAU_OFFICIAL_RED, GERAL: URURAU_OFFICIAL_RED
+  };
+
+  const DEFAULT_PREVIEW = {
+    category: 'GERAL',
+    title: 'Titulo de teste do template',
+    summary: 'Subtitulo de teste para voce verificar posicoes.',
+    author: '',
+    date: ''
+  };
+
+  const DEFAULT_BINDINGS = {
+    category: 'article.category',
+    title: 'article.title',
+    summary: 'article.summary',
+    author: 'article.author',
+    date: 'article.date',
+    'articleImage.src': 'article.image',
+    watermark: null
+  };
+
+  // zIndex padrao por chave (usado se a config nao trouxer zIndex)
+  const DEFAULT_Z_INDEX = {
+    blackBackground: 0,
+    articleImage: 10,
+    bottomGradient: 20,
+    category: 40,
+    title: 50,
+    separator: 55,
+    summary: 60,
+    lockedHeader: 90,
+    watermark: 100
+  };
+
+  // Tipo padrao por chave (usado se a config nao trouxer type)
+  const DEFAULT_TYPES = {
+    blackBackground: 'shape',
+    articleImage: 'image',
+    bottomGradient: 'gradientOverlay',
+    category: 'badge',
+    title: 'textBox',
+    summary: 'textBox',
+    watermark: 'textBox',
+    separator: 'shapeLine',
+    lockedHeader: 'lockedImage'
+  };
+
+  const DEFAULT_LABELS = {
+    blackBackground: 'Fundo Preto',
+    articleImage: 'Imagem da Materia',
+    bottomGradient: 'Gradiente Inferior',
+    category: 'Badge Categoria',
+    title: 'Titulo',
+    separator: 'Linha Decorativa',
+    summary: 'Subtitulo',
+    watermark: 'Watermark',
+    lockedHeader: 'Cabecalho (logo + 19 anos + U)'
+  };
+
+  const FORCED_LOCKED_KEYS = new Set(['blackBackground', 'lockedHeader']);
+  const FORCED_NON_DELETABLE = new Set(['blackBackground', 'lockedHeader', 'category', 'title', 'separator', 'summary', 'watermark']);
+
+  // ============================================================
+  // STATUS
+  // ============================================================
+  function showStatus(message, type) {
+    const banner = document.getElementById('statusBanner');
+    if (!banner) return;
+    banner.textContent = message;
+    banner.className = 'status-banner ' + (type || 'info');
+    banner.style.display = 'block';
+    if (type !== 'error') {
+      setTimeout(function () { banner.style.display = 'none'; }, 3500);
+    }
+  }
+
+  function showStatusLink(message, url, type) {
+    const banner = document.getElementById('statusBanner');
+    if (!banner) return;
+    banner.textContent = '';
+    banner.className = 'status-banner ' + (type || 'info');
+    banner.style.display = 'block';
+    const span = document.createElement('span');
+    span.textContent = message + ' ';
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Abrir preview';
+    link.style.color = 'inherit';
+    link.style.textDecoration = 'underline';
+    banner.appendChild(span);
+    banner.appendChild(link);
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  async function initEditor() {
+    try {
+      const res = await fetch('/api/template');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      templateData = normalizeStudioTemplate(await res.json());
+    } catch (err) {
+      showStatus('Erro ao carregar template. Backend (porta 3001) esta rodando?', 'error');
+      return;
+    }
+
+    if (!templateData || !templateData.layers) {
+      showStatus('Template invalido: campo "layers" ausente.', 'error');
+      return;
+    }
+
+    await waitForTemplateFonts();
+
+    stage = new Konva.Stage({
+      container: 'konva-container',
+      width: CANVAS_WIDTH * currentScale,
+      height: CANVAS_HEIGHT * currentScale,
+      scaleX: currentScale,
+      scaleY: currentScale
+    });
+
+    layer = new Konva.Layer();
+    stage.add(layer);
+
+    // Transformer global para resize/rotate de elementos editaveis
+    transformer = new Konva.Transformer({
+      anchorSize: 14,
+      anchorStroke: '#E63946',
+      anchorFill: '#ffffff',
+      borderStroke: '#E63946',
+      borderDash: [6, 4],
+      keepRatio: false,
+      rotateEnabled: true,
+      ignoreStroke: true,
+      enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']
+    });
+    transformer.on('transformend', function () {
+      if (!selectedElement) return;
+      const node = konvaElements[selectedElement];
+      if (!node) return;
+      // Aplica scale na width/height e zera scale para manter coords limpos
+      applyTransformerScaleToSize(node);
+      saveUndo();
+      updatePropertiesPanel(selectedElement);
+      updateElementList();
+      refreshSelectionIndicator();
+    });
+    layer.add(transformer);
+
+    await createAllLayers();
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    setupKeyboard();
+    setupArticleImport();
+
+    stage.on('click tap', function (e) {
+      // Click no fundo preto ou stage = desselecionar
+      const target = e.target;
+      const targetKey = target ? target.id() || target.name() : '';
+      if (e.target === stage || targetKey === 'blackBackground' || target === layer) {
+        deselectAll();
+      }
+    });
+
+    const scaleSlider = document.getElementById('scaleSlider');
+    if (scaleSlider) {
+      scaleSlider.addEventListener('input', function (e) {
+        setCanvasZoom(parseFloat(e.target.value), { center: false });
+      });
+    }
+
+    bindToolbarButtons();
+    window.requestAnimationFrame(function () { fitCanvasToView(); });
+  }
+
+  // ============================================================
+  // CRIACAO DAS CAMADAS
+  // ============================================================
+  async function createAllLayers() {
+    const layers = templateData.layers || {};
+
+    // Garante presenca das camadas obrigatorias mesmo se o JSON antigo nao tiver
+    ensureLayer('blackBackground', { type: 'shape', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, color: '#000000', opacity: 1, visible: true, locked: true, deletable: false, zIndex: 0 });
+    ensureLayer('articleImage', { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, src: '', fitMode: 'cover', objectFit: 'cover', focalPoint: { x: 0.5, y: 0.5 }, focalX: 0.5, focalY: 0.5, zoom: 1, panX: 0, panY: 0, opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
+    ensureLayer('lockedHeader', { type: 'lockedImage', x: 0, y: 0, width: CANVAS_WIDTH, height: 260, src: TEMPLATE_BASE_URL, crop: { x: 0, y: 0, width: CANVAS_WIDTH, height: 260 }, opacity: 1, visible: true, locked: true, deletable: false, zIndex: 90, shadow: defaultHeaderShadow(), outline: defaultHeaderOutline() });
+
+    // Cria cada layer no Konva. Aguarda imagens.
+    const keys = Object.keys(templateData.layers);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const config = templateData.layers[key];
+      const meta = readMeta(key, config);
+      layerMeta[key] = meta;
+      await createKonvaForLayer(key, config, meta);
+    }
+  }
+
+  function ensureLayer(key, defaults) {
+    if (!templateData.layers[key]) {
+      templateData.layers[key] = { id: key, label: DEFAULT_LABELS[key] || key, ...defaults };
+    } else {
+      const cur = templateData.layers[key];
+      Object.keys(defaults).forEach(function (k) {
+        if (cur[k] === undefined) cur[k] = defaults[k];
+      });
+      if (!cur.id) cur.id = key;
+      if (!cur.label) cur.label = DEFAULT_LABELS[key] || key;
+    }
+  }
+
+  function readMeta(key, config) {
+    return {
+      id: config.id || key,
+      key: key,
+      type: config.type || DEFAULT_TYPES[key] || 'textBox',
+      label: config.label || DEFAULT_LABELS[key] || key,
+      zIndex: typeof config.zIndex === 'number' ? config.zIndex : (DEFAULT_Z_INDEX[key] != null ? DEFAULT_Z_INDEX[key] : 50),
+      visible: config.visible !== false,
+      locked: FORCED_LOCKED_KEYS.has(key) ? true : !!config.locked,
+      deletable: FORCED_NON_DELETABLE.has(key) ? false : (config.deletable !== false)
+    };
+  }
+
+  async function createKonvaForLayer(key, config, meta) {
+    const type = meta.type;
+    if (type === 'shape') return createShape(key, config, meta);
+    if (type === 'image') return createImage(key, config, meta);
+    if (type === 'lockedImage') return createLockedImage(key, config, meta);
+    if (type === 'overlay') return createOverlay(key, config, meta);
+    if (type === 'gradientOverlay') return createGradientOverlay(key, config, meta);
+    if (type === 'badge') return createBadge(key, config, meta);
+    if (type === 'shapeLine') return createShapeLine(key, config, meta);
+    if (type === 'textBox') return createTextBox(key, config, meta);
+    if (type === 'logo') return createImage(key, config, meta);
+    return createTextBox(key, config, meta);
+  }
+
+  function createShape(key, config, meta) {
+    const node = new Konva.Rect({
+      x: numOr(config.x, 0),
+      y: numOr(config.y, 0),
+      width: Math.max(1, numOr(config.width, CANVAS_WIDTH)),
+      height: Math.max(1, numOr(config.height, CANVAS_HEIGHT)),
+      fill: config.color || config.background || '#000000',
+      opacity: clamp01(numOr(config.opacity, 1)),
+      visible: meta.visible,
+      draggable: !meta.locked,
+      listening: !meta.locked,
+      name: key,
+      id: key
+    });
+    node.setAttr('componentType', 'shape');
+    setupElementEvents(node, key);
+    layer.add(node);
+    konvaElements[key] = node;
+  }
+
+  function createImage(key, config, meta) {
+    return new Promise(function (resolve) {
+      const placeholder = new Konva.Rect({
+        x: numOr(config.x, 0),
+        y: numOr(config.y, 0),
+        width: Math.max(1, numOr(config.width, CANVAS_WIDTH)),
+        height: Math.max(1, numOr(config.height, CANVAS_HEIGHT)),
+        fill: 'rgba(255,255,255,0.04)',
+        stroke: 'rgba(255,255,255,0.25)',
+        dash: [10, 8],
+        opacity: clamp01(numOr(config.opacity, 1)),
+        visible: meta.visible,
+        draggable: !meta.locked,
+        listening: !meta.locked,
+        name: key,
+        id: key
+      });
+      placeholder.setAttr('componentType', 'image');
+      setupElementEvents(placeholder, key);
+      layer.add(placeholder);
+      konvaElements[key] = placeholder;
+
+      const src = config.src || config.image || config.url;
+      if (!src) { resolve(); return; }
+
+      loadImageNode(key, src, config, meta).then(resolve).catch(function () { resolve(); });
+    });
+  }
+
+  function createLockedImage(key, config, meta) {
+    return new Promise(function (resolve) {
+      const src = config.src || TEMPLATE_BASE_URL;
+      const image = new Image();
+      image.crossOrigin = 'anonymous';
+      image.onload = function () {
+        const node = new Konva.Image({
+          x: numOr(config.x, 0),
+          y: numOr(config.y, 0),
+          width: Math.max(1, numOr(config.width, CANVAS_WIDTH)),
+          height: Math.max(1, numOr(config.height, 260)),
+          image: key === 'lockedHeader' ? makeBlackTransparentImage(image, config.crop) : image,
+          opacity: clamp01(numOr(config.opacity, 1)),
+          visible: meta.visible,
+          draggable: false,
+          listening: false,
+          name: key,
+          id: key
+        });
+        node.setAttr('componentType', 'lockedImage');
+        applyLockedHeaderEffects(node, config, key);
+        if (config.crop && key !== 'lockedHeader') {
+          node.crop({
+            x: numOr(config.crop.x, 0),
+            y: numOr(config.crop.y, 0),
+            width: numOr(config.crop.width, image.naturalWidth || node.width()),
+            height: numOr(config.crop.height, image.naturalHeight || node.height())
+          });
+        }
+        node.setAttr('src', src);
+        layer.add(node);
+        konvaElements[key] = node;
+        resolve();
+      };
+      image.onerror = function () {
+        // sem cabecalho — tudo bem, apenas nao renderiza
+        showStatus('Cabecalho ' + key + ' nao pode ser carregado de ' + src, 'info');
+        resolve();
+      };
+      image.src = src;
+    });
+  }
+
+  function loadImageNode(key, src, config, meta) {
+    return new Promise(function (resolve, reject) {
+      const image = new Image();
+      image.crossOrigin = 'anonymous';
+      const onLoaded = function () {
+        const placeholder = konvaElements[key];
+        const node = new Konva.Image({
+          x: placeholder ? placeholder.x() : numOr(config.x, 0),
+          y: placeholder ? placeholder.y() : numOr(config.y, 0),
+          width: placeholder ? placeholder.width() : numOr(config.width, CANVAS_WIDTH),
+          height: placeholder ? placeholder.height() : numOr(config.height, CANVAS_HEIGHT),
+          image: image,
+          opacity: placeholder ? placeholder.opacity() : clamp01(numOr(config.opacity, 1)),
+          visible: meta.visible,
+          draggable: !meta.locked,
+          listening: !meta.locked,
+          name: key,
+          id: key
+        });
+        node.setAttr('componentType', 'image');
+        node.setAttr('src', src);
+        const focal = config.focalPoint || { x: config.focalX, y: config.focalY };
+        node.setAttr('fitMode', config.fitMode || config.objectFit || 'cover');
+        node.setAttr('objectFit', config.objectFit || config.fitMode || 'cover');
+        node.setAttr('focalPoint', {
+          x: clamp01(numOr(focal.x, 0.5)),
+          y: clamp01(numOr(focal.y, 0.5))
+        });
+        node.setAttr('focalX', clamp01(numOr(config.focalX, focal.x != null ? focal.x : 0.5)));
+        node.setAttr('focalY', clamp01(numOr(config.focalY, focal.y != null ? focal.y : 0.5)));
+        node.setAttr('zoom', Math.max(0.1, numOr(config.zoom, 1)));
+        node.setAttr('panX', numOr(config.panX, 0));
+        node.setAttr('panY', numOr(config.panY, 0));
+        applyImageCoverCrop(node, image);
+        if (placeholder) placeholder.destroy();
+        setupElementEvents(node, key);
+        layer.add(node);
+        konvaElements[key] = node;
+        applyZIndexOrder();
+        layer.draw();
+        resolve();
+      };
+      const onError = function () {
+        if (image.crossOrigin) {
+          image.crossOrigin = null;
+          image.src = src;
+          return;
+        }
+        reject(new Error('Falha ao carregar ' + src));
+      };
+      image.onload = onLoaded;
+      image.onerror = onError;
+      image.src = src;
+    });
+  }
+
+  function createOverlay(key, config, meta) {
+    const node = new Konva.Rect({
+      x: numOr(config.x, 0),
+      y: numOr(config.y, 0),
+      width: Math.max(1, numOr(config.width, CANVAS_WIDTH)),
+      height: Math.max(1, numOr(config.height, 600)),
+      fill: config.color || config.background || config.fill || '#050510',
+      opacity: clamp01(numOr(config.opacity, 0.85)),
+      cornerRadius: numOr(config.borderRadius != null ? config.borderRadius : config.radius, 0),
+      visible: meta.visible,
+      draggable: !meta.locked,
+      listening: !meta.locked,
+      name: key,
+      id: key
+    });
+    node.setAttr('componentType', 'overlay');
+    setupElementEvents(node, key);
+    layer.add(node);
+    konvaElements[key] = node;
+  }
+
+  function createGradientOverlay(key, config, meta) {
+    const x = numOr(config.x, 0);
+    const y = numOr(config.y, 0);
+    const w = Math.max(1, numOr(config.width, CANVAS_WIDTH));
+    const h = Math.max(1, numOr(config.height, 600));
+    const angle = numOr(config.angle, 90);  // graus, 0=horizontal->direita, 90=vertical->baixo
+    const stops = normalizeColorStops(config.colorStops);
+
+    const gradientPoints = anglePointsForRect(angle, w, h);
+    const node = new Konva.Rect({
+      x: x, y: y,
+      width: w, height: h,
+      fillLinearGradientStartPoint: gradientPoints.start,
+      fillLinearGradientEndPoint: gradientPoints.end,
+      fillLinearGradientColorStops: stopsToKonva(stops),
+      opacity: clamp01(numOr(config.opacity, 1)),
+      rotation: numOr(config.rotation, 0),
+      visible: meta.visible,
+      draggable: !meta.locked,
+      listening: !meta.locked,
+      name: key,
+      id: key
+    });
+    node.setAttr('componentType', 'gradientOverlay');
+    node.setAttr('angle', angle);
+    node.setAttr('colorStops', stops);
+    setupElementEvents(node, key);
+    layer.add(node);
+    konvaElements[key] = node;
+  }
+
+  function normalizeColorStops(stops) {
+    const arr = Array.isArray(stops) && stops.length ? stops : [
+      { offset: 0, color: 'rgba(0,0,0,0)' },
+      { offset: 1, color: 'rgba(0,0,0,1)' }
+    ];
+    return arr.map(function (s) {
+      return { offset: clamp01(numOr(s.offset, 0)), color: String(s.color || 'rgba(0,0,0,1)') };
+    }).sort(function (a, b) { return a.offset - b.offset; });
+  }
+
+  // Konva exige array plano [offset, color, offset, color, ...]
+  function stopsToKonva(stops) {
+    const out = [];
+    stops.forEach(function (s) { out.push(s.offset, s.color); });
+    return out;
+  }
+
+  // Calcula dois pontos (start, end) dentro do retangulo dado um angulo em graus
+  // Convencao: 0deg = esquerda->direita; 90deg = topo->base; 180 = direita->esquerda
+  function anglePointsForRect(angleDeg, w, h) {
+    const rad = (angleDeg * Math.PI) / 180;
+    const cx = w / 2, cy = h / 2;
+    const dx = Math.cos(rad), dy = Math.sin(rad);
+    // Tamanho da projecao dentro da caixa
+    const half = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
+    return {
+      start: { x: cx - dx * half, y: cy - dy * half },
+      end:   { x: cx + dx * half, y: cy + dy * half }
+    };
+  }
+
+  function applyGradientUpdate(node) {
+    const w = node.width();
+    const h = node.height();
+    const angle = numOr(node.getAttr('angle'), 90);
+    const stops = node.getAttr('colorStops') || [];
+    const pts = anglePointsForRect(angle, w, h);
+    node.fillLinearGradientStartPoint(pts.start);
+    node.fillLinearGradientEndPoint(pts.end);
+    node.fillLinearGradientColorStops(stopsToKonva(stops));
+  }
+
+  function createBadge(key, config, meta) {
+    const cat = config;
+    const catLabel = formatCategoryLabel(cat.text || (templateData.defaults && templateData.defaults.category) || DEFAULT_PREVIEW.category, cat);
+    const fontSize = numOr(cat.fontSize, 22);
+    const paddingX = numOr(cat.paddingX, 24);
+    const paddingY = numOr(cat.paddingY, 14);
+    const autoWidth = cat.autoWidth !== false;
+    const badgeHeight = Math.max(1, numOr(cat.height, fontSize + paddingY * 2));
+    // Resolve cor do badge: 1) categoryStyles 2) fallback vermelho oficial.
+    const resolvedStyle = resolveCategoryStyle(catLabel);
+    const badgeColor = resolvedStyle.background || (isHexColor(cat.background) ? cat.background : URURAU_OFFICIAL_RED);
+    const textColor = cat.textColor || cat.color || resolvedStyle.textColor || '#FFFFFF';
+
+    const group = new Konva.Group({
+      x: numOr(cat.x, 67), y: numOr(cat.y, 1174),
+      draggable: !meta.locked,
+      listening: !meta.locked,
+      visible: meta.visible,
+      opacity: clamp01(numOr(cat.opacity, 1)),
+      name: key,
+      id: key
+    });
+    group.setAttr('componentType', 'badge');
+    group.setAttr('autoWidth', autoWidth);
+    group.setAttr('paddingX', paddingX);
+    group.setAttr('paddingY', paddingY);
+    group.setAttr('borderRadius', numOr(cat.borderRadius != null ? cat.borderRadius : cat.radius, 6));
+    group.setAttr('fontFamily', normalizeFontFamily(cat.fontFamily));
+    group.setAttr('fontWeight', normalizeFontWeight(cat.fontWeight, 'bold'));
+    group.setAttr('letterSpacing', numOr(cat.letterSpacing, 0));
+    group.setAttr('textTransform', normalizeTextTransform(cat.textTransform));
+
+    const initialWidth = autoWidth
+      ? Math.max(MIN_BADGE_WIDTH, calculateBadgeWidth(catLabel, fontSize, paddingX, numOr(cat.letterSpacing, 0)))
+      : Math.max(1, numOr(cat.width, MIN_BADGE_WIDTH));
+
+    const hit = new Konva.Rect({
+      width: initialWidth, height: badgeHeight,
+      fill: 'rgba(0,0,0,0)',
+      name: 'badge-hit'
+    });
+    const bg = new Konva.Rect({
+      width: initialWidth, height: badgeHeight,
+      fill: badgeColor,
+      cornerRadius: numOr(cat.borderRadius != null ? cat.borderRadius : cat.radius, 6),
+      name: 'badge-bg'
+    });
+    const text = new Konva.Text({
+      x: paddingX,
+      y: (badgeHeight - fontSize) / 2 + 2,
+      text: catLabel,
+      fontSize: fontSize,
+      fontFamily: normalizeFontFamily(cat.fontFamily),
+      fontStyle: normalizeFontWeight(cat.fontWeight, 'bold'),
+      letterSpacing: numOr(cat.letterSpacing, 0),
+      fill: textColor,
+      name: 'badge-text'
+    });
+
+    group.add(hit);
+    group.add(bg);
+    group.add(text);
+    resizeBadgeToText(group);
+    setupElementEvents(group, key);
+    layer.add(group);
+    konvaElements[key] = group;
+  }
+
+  function createShapeLine(key, config, meta) {
+    const sep = config;
+    const w = numOr(sep.width, 220);
+    const h = numOr(sep.height, 5);
+    const hitH = Math.max(SEPARATOR_HIT_HEIGHT, h);
+
+    const group = new Konva.Group({
+      x: numOr(sep.x, 75),
+      y: numOr(sep.y, 1624),
+      width: w,
+      height: hitH,
+      draggable: !meta.locked,
+      listening: !meta.locked,
+      visible: meta.visible,
+      opacity: clamp01(numOr(sep.opacity, 1)),
+      name: key,
+      id: key
+    });
+    group.setAttr('componentType', 'shapeLine');
+
+    const hit = new Konva.Rect({
+      x: 0,
+      y: -Math.round((hitH - h) / 2),
+      width: w, height: hitH,
+      fill: 'rgba(0,0,0,0)',
+      name: 'separator-hit'
+    });
+    const visible = new Konva.Rect({
+      x: 0, y: 0,
+      width: w, height: h,
+      fill: sep.color || '#c11f25',
+      cornerRadius: numOr(sep.radius, 2),
+      name: 'separator-visible'
+    });
+    group.add(hit);
+    group.add(visible);
+    setupElementEvents(group, key);
+    layer.add(group);
+    konvaElements[key] = group;
+  }
+
+  function createTextBox(key, config, meta) {
+    const defaultText = resolveLayerTextValue(key, config);
+    const node = new Konva.Text({
+      x: numOr(config.x, 55),
+      y: numOr(config.y, 1180),
+      text: defaultText,
+      fontSize: numOr(config.fontSize, 32),
+      fontFamily: normalizeFontFamily(config.fontFamily),
+      fontStyle: normalizeFontWeight(config.fontWeight, key === 'title' || key === 'category' ? 'bold' : 'normal'),
+      fill: config.color || '#FFFFFF',
+      width: numOr(config.maxWidth || config.width, 970),
+      lineHeight: getKonvaLineHeight(config),
+      opacity: clamp01(numOr(config.opacity, 1)),
+      visible: meta.visible,
+      draggable: !meta.locked,
+      listening: !meta.locked,
+      name: key,
+      id: key
+    });
+    node.setAttr('componentType', 'textBox');
+    setupElementEvents(node, key);
+    layer.add(node);
+    konvaElements[key] = node;
+  }
+
+  function resolveLayerTextValue(key, config) {
+    const bindingValue = getArticleBindingValue(config.binding);
+    if (bindingValue) return bindingValue;
+    if (key === 'title') return templateData.defaults?.title || DEFAULT_PREVIEW.title;
+    if (key === 'summary') return templateData.defaults?.summary || DEFAULT_PREVIEW.summary;
+    if (key === 'category') return templateData.defaults?.category || DEFAULT_PREVIEW.category;
+    return config.text || '';
+  }
+
+  function getArticleBindingValue(binding) {
+    const data = (templateData && templateData.articleData) || {};
+    if (binding === 'article.category') return cleanText(data.category);
+    if (binding === 'article.title') return cleanText(data.title);
+    if (binding === 'article.summary') return cleanText(data.summary);
+    if (binding === 'article.image') return cleanText(data.image);
+    if (binding === 'article.author') return cleanText(data.author);
+    if (binding === 'article.date') return cleanText(data.date);
+    return '';
+  }
+
+  // ============================================================
+  // ZINDEX / ORDEM
+  // ============================================================
+  function applyZIndexOrder() {
+    if (!layer) return;
+    const sorted = Object.keys(konvaElements)
+      .map(function (k) { return { k: k, z: layerMeta[k] ? layerMeta[k].zIndex : 50 }; })
+      .sort(function (a, b) { return a.z - b.z; });
+
+    sorted.forEach(function (entry, i) {
+      const node = konvaElements[entry.k];
+      if (!node) return;
+      // Konva: indice 0 = mais embaixo. Iteramos do menor zIndex para o maior
+      // e usamos zIndex(i) para colocar nessa posicao.
+      try { node.zIndex(i); } catch (e) { /* ignore */ }
+    });
+
+    // selection-indicator e transformer sempre no topo
+    const indicators = layer.find('.selection-indicator');
+    indicators.forEach(function (ind) { ind.moveToTop(); });
+    if (transformer) transformer.moveToTop();
+  }
+
+  function moveLayerBy(key, delta) {
+    if (!layerMeta[key]) return;
+    const ordered = Object.keys(layerMeta)
+      .filter(function (k) { return konvaElements[k]; })
+      .sort(function (a, b) { return layerMeta[a].zIndex - layerMeta[b].zIndex; });
+    const idx = ordered.indexOf(key);
+    const newIdx = idx + delta;
+    if (newIdx < 0 || newIdx >= ordered.length) return;
+    const swapWith = ordered[newIdx];
+    const tmp = layerMeta[key].zIndex;
+    layerMeta[key].zIndex = layerMeta[swapWith].zIndex;
+    layerMeta[swapWith].zIndex = tmp;
+    if (templateData.layers[key]) templateData.layers[key].zIndex = layerMeta[key].zIndex;
+    if (templateData.layers[swapWith]) templateData.layers[swapWith].zIndex = layerMeta[swapWith].zIndex;
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    refreshSelectionIndicator();
+  }
+
+  function moveLayerToFront(key) {
+    if (!layerMeta[key]) return;
+    let max = -Infinity;
+    Object.keys(layerMeta).forEach(function (k) { if (layerMeta[k].zIndex > max) max = layerMeta[k].zIndex; });
+    layerMeta[key].zIndex = max + 1;
+    if (templateData.layers[key]) templateData.layers[key].zIndex = layerMeta[key].zIndex;
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    refreshSelectionIndicator();
+  }
+
+  function moveLayerToBack(key) {
+    if (!layerMeta[key]) return;
+    let min = Infinity;
+    Object.keys(layerMeta).forEach(function (k) { if (layerMeta[k].zIndex < min) min = layerMeta[k].zIndex; });
+    layerMeta[key].zIndex = min - 1;
+    if (templateData.layers[key]) templateData.layers[key].zIndex = layerMeta[key].zIndex;
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    refreshSelectionIndicator();
+  }
+
+  function normalizeStudioTemplate(template) {
+    const next = template && typeof template === 'object' ? template : {};
+    next.bindings = { ...DEFAULT_BINDINGS, ...(next.bindings || {}) };
+    next.articleData = { ...(next.articleData || {}) };
+    next.layers = next.layers || {};
+    applyDefaultLayerBinding(next.layers, 'category', 'article.category');
+    applyDefaultLayerBinding(next.layers, 'title', 'article.title');
+    applyDefaultLayerBinding(next.layers, 'summary', 'article.summary');
+    applyDefaultLayerBinding(next.layers, 'articleImage', 'article.image');
+    return next;
+  }
+
+  function applyDefaultLayerBinding(layers, key, binding) {
+    if (!layers || !layers[key]) return;
+    if (!layers[key].binding) layers[key].binding = binding;
+  }
+
+  async function duplicateLayer(key) {
+    if (!layerMeta[key] || !konvaElements[key]) return;
+    if (FORCED_LOCKED_KEYS.has(key) || layerMeta[key].type === 'lockedImage' || key === 'blackBackground') {
+      showStatus('Esta camada nao pode ser duplicada (' + key + ').', 'info');
+      return;
+    }
+    const snapshot = buildTemplateSnapshot(true);
+    const original = snapshot && snapshot.layers ? snapshot.layers[key] : null;
+    if (!original) {
+      showStatus('Nao foi possivel duplicar: camada nao encontrada no snapshot.', 'error');
+      return;
+    }
+
+    saveUndo();
+    const nextKey = uniqueLayerKey(key);
+    const nextConfig = JSON.parse(JSON.stringify(original));
+    nextConfig.id = nextKey;
+    nextConfig.label = uniqueLayerLabel(original.label || layerMeta[key].label || key);
+    nextConfig.x = Math.round(numOr(nextConfig.x, konvaElements[key].x()) + 20);
+    nextConfig.y = Math.round(numOr(nextConfig.y, konvaElements[key].y()) + 20);
+    nextConfig.locked = false;
+    nextConfig.deletable = true;
+    nextConfig.visible = original.visible !== false;
+    nextConfig.zIndex = insertZIndexAbove(layerMeta[key].zIndex);
+
+    templateData.layers[nextKey] = nextConfig;
+    const meta = readMeta(nextKey, nextConfig);
+    layerMeta[nextKey] = meta;
+    await createKonvaForLayer(nextKey, nextConfig, meta);
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    selectElement(nextKey);
+    showStatus('Camada duplicada: ' + nextKey, 'success');
+  }
+
+  function insertZIndexAbove(baseZ) {
+    const targetZ = numOr(baseZ, 50) + 1;
+    Object.keys(layerMeta).forEach(function (k) {
+      if (layerMeta[k].zIndex >= targetZ) {
+        layerMeta[k].zIndex += 1;
+        if (templateData.layers[k]) templateData.layers[k].zIndex = layerMeta[k].zIndex;
+      }
+    });
+    return targetZ;
+  }
+
+  function uniqueLayerKey(baseKey) {
+    const safeBase = String(baseKey || 'layer').replace(/[^a-zA-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'layer';
+    let i = 1;
+    let key = safeBase + '_copy';
+    while ((templateData.layers && templateData.layers[key]) || konvaElements[key] || layerMeta[key]) {
+      i += 1;
+      key = safeBase + '_copy_' + i;
+    }
+    return key;
+  }
+
+  function uniqueLayerLabel(label) {
+    const base = String(label || 'Camada').replace(/\s+\(copia(?: \d+)?\)$/i, '');
+    return base + ' (copia)';
+  }
+
+  function toggleVisible(key) {
+    if (!layerMeta[key]) return;
+    layerMeta[key].visible = !layerMeta[key].visible;
+    if (templateData.layers[key]) templateData.layers[key].visible = layerMeta[key].visible;
+    const node = konvaElements[key];
+    if (node) node.visible(layerMeta[key].visible);
+    layer.draw();
+    updateElementList();
+    refreshSelectionIndicator();
+  }
+
+  function toggleLocked(key) {
+    if (!layerMeta[key]) return;
+    if (FORCED_LOCKED_KEYS.has(key)) {
+      showStatus('Esta camada nao pode ser desbloqueada (' + key + ').', 'info');
+      return;
+    }
+    layerMeta[key].locked = !layerMeta[key].locked;
+    if (templateData.layers[key]) templateData.layers[key].locked = layerMeta[key].locked;
+    const node = konvaElements[key];
+    if (node) {
+      if (typeof node.draggable === 'function') node.draggable(!layerMeta[key].locked);
+      if (typeof node.listening === 'function') node.listening(!layerMeta[key].locked);
+    }
+    layer.draw();
+    updateElementList();
+  }
+
+  function deleteLayer(key) {
+    if (!layerMeta[key]) return;
+    if (!layerMeta[key].deletable || FORCED_NON_DELETABLE.has(key)) {
+      showStatus('Esta camada nao pode ser apagada (' + key + ').', 'info');
+      return;
+    }
+    if (!confirm('Apagar a camada "' + (layerMeta[key].label || key) + '"? Nao pode ser desfeito.')) return;
+    const node = konvaElements[key];
+    if (node) node.destroy();
+    delete konvaElements[key];
+    delete layerMeta[key];
+    if (templateData.layers && templateData.layers[key]) delete templateData.layers[key];
+    if (selectedElement === key) selectedElement = null;
+    layer.draw();
+    updateElementList();
+    deselectAll();
+  }
+
+  async function addLayerFromConfig(baseKey, config) {
+    if (!templateData.layers) templateData.layers = {};
+    saveUndo();
+    const key = uniqueLayerKey(baseKey);
+    const nextConfig = {
+      id: key,
+      label: config.label || uniqueLayerLabel(DEFAULT_LABELS[baseKey] || baseKey),
+      visible: true,
+      locked: false,
+      deletable: true,
+      ...config
+    };
+    nextConfig.id = key;
+    nextConfig.zIndex = insertZIndexAbove(numOr(nextConfig.zIndex, 50));
+    templateData.layers[key] = nextConfig;
+    const meta = readMeta(key, nextConfig);
+    layerMeta[key] = meta;
+    await createKonvaForLayer(key, nextConfig, meta);
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    selectElement(key);
+    return key;
+  }
+
+  async function addTextLayer(preset) {
+    const cfg = preset && typeof preset === 'object' && !preset.preventDefault ? preset : {};
+    await addLayerFromConfig('textBox', {
+      type: 'textBox',
+      label: cfg.label || 'Novo texto',
+      text: cfg.text || 'Novo texto',
+      x: numOr(cfg.x, 120),
+      y: numOr(cfg.y, 980),
+      width: numOr(cfg.width, 760),
+      maxWidth: numOr(cfg.maxWidth || cfg.width, 760),
+      fontFamily: DEFAULT_FONT_FAMILY,
+      fontWeight: cfg.fontWeight || 'bold',
+      fontSize: numOr(cfg.fontSize, 48),
+      lineHeight: numOr(cfg.lineHeight, 58),
+      color: cfg.color || '#FFFFFF',
+      opacity: 1,
+      zIndex: DEFAULT_Z_INDEX.summary + 1
+    });
+    showStatus('Texto adicionado.', 'success');
+  }
+
+  async function addTextPreset(kind) {
+    if (kind === 'body') {
+      await addTextLayer({
+        label: 'Texto de apoio',
+        text: 'Texto de apoio',
+        x: 120,
+        y: 1320,
+        width: 760,
+        fontWeight: 'normal',
+        fontSize: 30,
+        lineHeight: 40
+      });
+      return;
+    }
+    await addTextLayer({
+      label: 'Titulo editorial',
+      text: 'Titulo editorial',
+      x: 120,
+      y: 1120,
+      width: 780,
+      fontWeight: 'bold',
+      fontSize: 58,
+      lineHeight: 66
+    });
+  }
+
+  async function addGradientLayer() {
+    await addLayerFromConfig('gradientOverlay', {
+      type: 'gradientOverlay',
+      label: 'Novo gradiente',
+      x: 0,
+      y: 1080,
+      width: CANVAS_WIDTH,
+      height: 520,
+      angle: 90,
+      opacity: 0.88,
+      colorStops: [
+        { offset: 0, color: 'rgba(0,0,0,0)' },
+        { offset: 1, color: 'rgba(0,0,0,0.92)' }
+      ],
+      zIndex: DEFAULT_Z_INDEX.bottomGradient
+    });
+    showStatus('Gradiente adicionado.', 'success');
+  }
+
+  async function addLineLayer() {
+    await addLayerFromConfig('shapeLine', {
+      type: 'shapeLine',
+      label: 'Nova linha',
+      x: 120,
+      y: 1460,
+      width: 240,
+      height: 8,
+      color: '#c11f25',
+      opacity: 1,
+      zIndex: DEFAULT_Z_INDEX.separator
+    });
+    showStatus('Linha adicionada.', 'success');
+  }
+
+  async function addImageLayerFromSource(src, label) {
+    await addLayerFromConfig('image', {
+      type: 'image',
+      label: label || 'Nova imagem',
+      src: src,
+      x: 140,
+      y: 360,
+      width: 800,
+      height: 800,
+      fitMode: 'cover',
+      objectFit: 'cover',
+      focalPoint: { x: 0.5, y: 0.5 },
+      focalX: 0.5,
+      focalY: 0.5,
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      opacity: 1,
+      zIndex: DEFAULT_Z_INDEX.articleImage + 1
+    });
+    showStatus('Imagem adicionada como camada.', 'success');
+  }
+
+  function addImageLayerByUrl() {
+    const src = cleanText(prompt('URL da imagem para adicionar como camada:') || '');
+    if (!src) return;
+    addImageLayerFromSource(src, 'Imagem por URL');
+  }
+
+  function duplicateSelectedLayer() {
+    if (!selectedElement) { showStatus('Selecione uma camada para duplicar.', 'info'); return; }
+    duplicateLayer(selectedElement);
+  }
+
+  function deleteSelectedLayer() {
+    if (!selectedElement) { showStatus('Selecione uma camada para apagar.', 'info'); return; }
+    deleteLayer(selectedElement);
+  }
+
+  function copySelectedLayer() {
+    if (!selectedElement || !konvaElements[selectedElement]) {
+      showStatus('Selecione uma camada para copiar.', 'info');
+      return;
+    }
+    copiedElementKey = selectedElement;
+    showStatus('Camada copiada. Use Ctrl+V ou Colar.', 'success');
+  }
+
+  function pasteCopiedLayer() {
+    if (!copiedElementKey || !konvaElements[copiedElementKey]) {
+      showStatus('Nenhuma camada copiada para colar.', 'info');
+      return;
+    }
+    duplicateLayer(copiedElementKey);
+  }
+
+  function setSelectedOpacity(value) {
+    const node = getSelectedEditableNode();
+    if (!node) return;
+    saveUndo();
+    node.opacity(clamp01(numOr(value, node.opacity())));
+    layer.draw();
+    updateElementList();
+    updatePropertiesPanel(selectedElement);
+    refreshSelectionIndicator();
+    showStatus('Transparencia aplicada.', 'success');
+  }
+
+  function selectedImageKey() {
+    if (selectedElement && layerMeta[selectedElement] && (layerMeta[selectedElement].type === 'image' || layerMeta[selectedElement].type === 'logo')) return selectedElement;
+    return 'articleImage';
+  }
+
+  function centerSelectedImageCrop() {
+    const key = selectedImageKey();
+    if (!konvaElements[key]) { showStatus('Selecione uma imagem para centralizar.', 'info'); return; }
+    window.centerImageCrop(key);
+  }
+
+  function resetSelectedImageCrop() {
+    const key = selectedImageKey();
+    if (!konvaElements[key]) { showStatus('Selecione uma imagem para resetar o recorte.', 'info'); return; }
+    window.resetImageCrop(key);
+  }
+
+  function replaceArticleImageFromUpload() {
+    const uploadMode = document.getElementById('uploadMode');
+    const input = document.getElementById('imageUploadInput');
+    if (uploadMode) uploadMode.value = 'replace';
+    if (input) input.click();
+  }
+
+  function setImageSourceForKey(key, src) {
+    if (!key || !src || !templateData.layers[key] || !layerMeta[key]) return;
+    saveUndo();
+    const config = templateData.layers[key];
+    config.src = src;
+    config.image = '';
+    config.url = '';
+    const meta = layerMeta[key];
+    const existing = konvaElements[key];
+    if (existing) {
+      config.x = Math.round(existing.x());
+      config.y = Math.round(existing.y());
+      config.width = Math.round(existing.width ? existing.width() : numOr(config.width, CANVAS_WIDTH));
+      config.height = Math.round(existing.height ? existing.height() : numOr(config.height, CANVAS_HEIGHT));
+      config.opacity = existing.opacity ? existing.opacity() : config.opacity;
+      config.fitMode = existing.getAttr('fitMode') || config.fitMode || 'cover';
+      config.objectFit = existing.getAttr('objectFit') || config.fitMode;
+      config.focalPoint = existing.getAttr('focalPoint') || config.focalPoint || { x: 0.5, y: 0.5 };
+      config.focalX = existing.getAttr('focalX') ?? config.focalPoint.x ?? 0.5;
+      config.focalY = existing.getAttr('focalY') ?? config.focalPoint.y ?? 0.5;
+      config.zoom = existing.getAttr('zoom') ?? 1;
+      config.panX = existing.getAttr('panX') ?? 0;
+      config.panY = existing.getAttr('panY') ?? 0;
+      existing.destroy();
+      delete konvaElements[key];
+    }
+    loadImageNode(key, src, config, meta).then(function () {
+      applyZIndexOrder();
+      layer.draw();
+      updateElementList();
+      selectElement(key);
+      showStatus('Imagem atualizada.', 'success');
+    }).catch(function () {
+      showStatus('Nao foi possivel carregar a imagem informada.', 'error');
+    });
+  }
+
+  function handleImageUpload(event) {
+    const file = event && event.target && event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/i.test(file.type)) {
+      showStatus('Envie uma imagem PNG, JPG ou WEBP.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function () {
+      const dataUrl = String(reader.result || '');
+      const mode = (document.getElementById('uploadMode') || {}).value || 'replace';
+      if (mode === 'layer') addImageLayerFromSource(dataUrl, file.name || 'Imagem enviada');
+      else loadArticleImageUrl(dataUrl);
+      event.target.value = '';
+    };
+    reader.onerror = function () { showStatus('Falha ao ler o arquivo de imagem.', 'error'); };
+    reader.readAsDataURL(file);
+  }
+
+  window.centerImageCrop = function (key) {
+    const node = konvaElements[key];
+    if (!node) return;
+    saveUndo();
+    node.setAttr('focalX', 0.5);
+    node.setAttr('focalY', 0.5);
+    node.setAttr('focalPoint', { x: 0.5, y: 0.5 });
+    node.setAttr('panX', 0);
+    node.setAttr('panY', 0);
+    if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    layer.draw();
+    updatePropertiesPanel(key);
+    refreshSelectionIndicator();
+  };
+
+  window.resetImageCrop = function (key) {
+    const node = konvaElements[key];
+    if (!node) return;
+    saveUndo();
+    node.setAttr('fitMode', 'cover');
+    node.setAttr('objectFit', 'cover');
+    node.setAttr('focalX', 0.5);
+    node.setAttr('focalY', 0.5);
+    node.setAttr('focalPoint', { x: 0.5, y: 0.5 });
+    node.setAttr('zoom', 1);
+    node.setAttr('panX', 0);
+    node.setAttr('panY', 0);
+    if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    layer.draw();
+    updatePropertiesPanel(key);
+    refreshSelectionIndicator();
+  };
+
+  // ============================================================
+  // EVENTOS DOS ELEMENTOS
+  // ============================================================
+  function setupElementEvents(node, key) {
+    node.on('dragstart', function () {
+      if (layerMeta[key] && layerMeta[key].locked) return;
+      saveUndo();
+      selectElement(key);
+    });
+    node.on('dragmove', function () { refreshSelectionIndicator(); });
+    node.on('dragend', function () {
+      selectElement(key);
+      updateElementList();
+      updatePropertiesPanel(key);
+    });
+    node.on('click tap', function (e) {
+      e.cancelBubble = true;
+      selectElement(key);
+    });
+    node.on('dblclick dbltap', function (e) {
+      e.cancelBubble = true;
+      if (layerMeta[key] && layerMeta[key].locked) return;
+      if (node.getClassName() === 'Text') editTextInline(node, key);
+      if (node.getClassName() === 'Group') {
+        const badgeText = node.findOne('.badge-text');
+        if (badgeText) editTextInline(badgeText, key);
+      }
+    });
+    node.on('mouseenter', function () {
+      document.body.style.cursor = (layerMeta[key] && layerMeta[key].locked) ? 'not-allowed' : 'move';
+    });
+    node.on('mouseleave', function () { document.body.style.cursor = 'default'; });
+  }
+
+  // ============================================================
+  // SELECAO
+  // ============================================================
+  function selectElement(key) {
+    if (!konvaElements[key]) return;
+    deselectAllVisuals();
+    selectedElement = key;
+    drawSelectionIndicator(konvaElements[key]);
+    attachTransformer(key);
+    updatePropertiesPanel(key);
+    updateElementList();
+  }
+
+  function attachTransformer(key) {
+    if (!transformer) return;
+    const node = konvaElements[key];
+    const meta = layerMeta[key];
+    if (!node || !meta) { transformer.nodes([]); transformer.visible(false); return; }
+    // Nao mostra transformer em camadas locked, no fundo preto, ou em separator/lockedHeader
+    const noTransform = meta.locked
+      || meta.type === 'shape'           // blackBackground - fixo
+      || meta.type === 'lockedImage'     // lockedHeader - fixo
+      || meta.type === 'shapeLine';      // separator usa controles do painel
+    if (noTransform) {
+      transformer.nodes([]);
+      transformer.visible(false);
+      return;
+    }
+    transformer.nodes([node]);
+    transformer.visible(true);
+    transformer.moveToTop();
+  }
+
+  function applyTransformerScaleToSize(node) {
+    if (!node) return;
+    const sx = node.scaleX();
+    const sy = node.scaleY();
+    if (Math.abs(sx - 1) < 0.001 && Math.abs(sy - 1) < 0.001) return;
+    if (typeof node.width === 'function' && typeof node.height === 'function') {
+      const newW = Math.max(1, Math.round(node.width() * sx));
+      const newH = Math.max(1, Math.round(node.height() * sy));
+      node.width(newW);
+      node.height(newH);
+      node.scaleX(1);
+      node.scaleY(1);
+      // Casos especiais:
+      const meta = layerMeta[selectedElement] || {};
+      if (meta.type === 'gradientOverlay') applyGradientUpdate(node);
+      if (meta.type === 'badge') {
+        // re-sincroniza filhos do group
+        const bg = node.findOne('.badge-bg');
+        const hit = node.findOne('.badge-hit');
+        const text = node.findOne('.badge-text');
+        if (bg) bg.size({ width: newW, height: newH });
+        if (hit) hit.size({ width: newW, height: newH });
+        if (text) text.y((newH - text.fontSize()) / 2 + 2);
+        node.setAttr('autoWidth', false);
+      }
+      if (meta.type === 'image' && node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+  }
+
+  function drawSelectionIndicator(node) {
+    if (!node || !node.visible()) return;
+    const box = node.getClientRect({ relativeTo: layer });
+    const sel = new Konva.Rect({
+      x: box.x - 4, y: box.y - 4,
+      width: box.width + 8, height: box.height + 8,
+      stroke: '#E63946',
+      strokeWidth: 2,
+      dash: [5, 5],
+      name: 'selection-indicator',
+      listening: false
+    });
+    layer.add(sel);
+    sel.moveToTop();
+    layer.draw();
+  }
+
+  function refreshSelectionIndicator() {
+    if (!selectedElement) return;
+    deselectAllVisuals();
+    const node = konvaElements[selectedElement];
+    if (node) drawSelectionIndicator(node);
+  }
+
+  function deselectAllVisuals() {
+    if (!layer) return;
+    const indicators = layer.find('.selection-indicator');
+    indicators.forEach(function (ind) { ind.destroy(); });
+    layer.draw();
+  }
+
+  function deselectAll() {
+    selectedElement = null;
+    deselectAllVisuals();
+    if (transformer) { transformer.nodes([]); transformer.visible(false); }
+    updateElementList();
+    const panel = document.getElementById('propertiesPanel');
+    if (panel) panel.innerHTML = '<p style="color:#666;font-size:12px">Selecione um elemento no canvas para editar.</p>';
+  }
+  window.selectElementFromList = selectElement;
+
+  // ============================================================
+  // EDICAO DE TEXTO INLINE
+  // ============================================================
+  function editTextInline(textNode, key) {
+    const stageBox = stage.container().getBoundingClientRect();
+    const textPosition = textNode.absolutePosition();
+    const area = document.createElement('textarea');
+    area.value = textNode.text();
+    area.style.position = 'fixed';
+    area.style.left = (stageBox.left + textPosition.x * currentScale) + 'px';
+    area.style.top = (stageBox.top + textPosition.y * currentScale) + 'px';
+    const w = textNode.width();
+    const h = Math.max(textNode.height(), textNode.fontSize() * 2);
+    area.style.width = (w * currentScale) + 'px';
+    area.style.height = (h * currentScale) + 'px';
+    area.style.fontSize = (textNode.fontSize() * currentScale) + 'px';
+    area.style.fontFamily = textNode.fontFamily();
+    area.style.color = textNode.fill();
+    area.style.background = 'rgba(0,0,0,0.9)';
+    area.style.border = '2px solid #E63946';
+    area.style.borderRadius = '4px';
+    area.style.padding = '4px';
+    area.style.resize = 'none';
+    area.style.outline = 'none';
+    area.style.zIndex = '1000';
+    document.body.appendChild(area);
+    area.focus();
+    area.select();
+
+    let finished = false;
+    function finish() {
+      if (finished) return;
+      finished = true;
+      saveUndo();
+      if (key === 'category' && textNode.name() === 'badge-text') {
+        const formatted = formatCategoryLabel(area.value, { textTransform: konvaElements.category.getAttr('textTransform') });
+        textNode.text(formatted);
+        resizeBadgeToText(konvaElements.category);
+      } else {
+        textNode.text(area.value);
+      }
+      layer.draw();
+      if (area.parentNode) area.parentNode.removeChild(area);
+      updateElementList();
+      updatePropertiesPanel(key);
+      refreshSelectionIndicator();
+    }
+    area.addEventListener('blur', finish);
+    area.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); area.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); area.value = textNode.text(); area.blur(); }
+    });
+  }
+
+  // ============================================================
+  // LISTA DE CAMADAS (com botoes de visibilidade/lock/delete/up/down)
+  // ============================================================
+  function updateElementList() {
+    const list = document.getElementById('elementList');
+    if (!list) return;
+    // Ordem: maior zIndex em cima (visualmente o topo)
+    const ordered = Object.keys(layerMeta)
+      .filter(function (k) { return konvaElements[k]; })
+      .sort(function (a, b) { return layerMeta[b].zIndex - layerMeta[a].zIndex; });
+
+    let html = '';
+    ordered.forEach(function (key) {
+      const meta = layerMeta[key];
+      const active = selectedElement === key ? 'active' : '';
+      const dim = meta.visible ? '' : ' dim';
+      const lockLabel = meta.locked ? 'Bloqueada' : 'Livre';
+      const visLabel = meta.visible ? 'Visivel' : 'Oculta';
+      const typeLabel = visualLayerType(meta.type);
+      html += '<div class="element-item ' + active + dim + (meta.locked ? ' locked' : '') + '" onclick="selectElementFromList(\'' + key + '\')">' +
+        '<div class="element-main">' +
+          '<span class="el-name">' + escapeHtmlText(meta.label) + '</span>' +
+          '<span class="el-meta">' +
+            '<span class="el-pill">' + escapeHtmlText(typeLabel) + '</span>' +
+            '<span class="el-pill">' + visLabel + '</span>' +
+            '<span class="el-pill">' + lockLabel + '</span>' +
+          '</span>' +
+        '</div>' +
+        '<div class="element-quick" onclick="event.stopPropagation()">' +
+          '<button class="layer-icon-btn" title="Mostrar/Ocultar camada" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + (meta.visible ? 'Visivel' : 'Oculta') + '</button>' +
+          '<button class="layer-icon-btn" title="Bloquear/Desbloquear camada" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + (meta.locked ? 'Bloq.' : 'Livre') + '</button>' +
+          '<details class="element-actions-menu">' +
+            '<summary title="Mais acoes da camada">Acoes</summary>' +
+            '<div class="layer-menu">' +
+              '<button title="Subir camada" onclick="window.layerCmd(\'up\', \'' + key + '\')">Subir</button>' +
+              '<button title="Descer camada" onclick="window.layerCmd(\'down\', \'' + key + '\')">Descer</button>' +
+              '<button title="Trazer para frente" onclick="window.layerCmd(\'front\', \'' + key + '\')">Trazer para frente</button>' +
+              '<button title="Enviar para tras" onclick="window.layerCmd(\'back\', \'' + key + '\')">Enviar para tras</button>' +
+              '<button title="Duplicar camada" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')">Duplicar</button>' +
+              (meta.deletable ? '<button title="Apagar camada" onclick="window.layerCmd(\'delete\', \'' + key + '\')">Apagar</button>' : '') +
+            '</div>' +
+          '</details>' +
+        '</div>' +
+      '</div>';
+    });
+    list.innerHTML = html;
+    updateTimelinePanel(ordered);
+    updateEditorChrome();
+  }
+
+  function updateTimelinePanel(orderedKeys) {
+    const tracks = document.getElementById('timelineTracks');
+    if (!tracks) return;
+    const ordered = orderedKeys || Object.keys(layerMeta)
+      .filter(function (k) { return konvaElements[k]; })
+      .sort(function (a, b) { return layerMeta[b].zIndex - layerMeta[a].zIndex; });
+    let html = '';
+    ordered.forEach(function (key) {
+      const meta = layerMeta[key];
+      if (!meta) return;
+      const active = selectedElement === key ? ' active' : '';
+      const hidden = meta.visible ? '' : ' hidden';
+      const locked = meta.locked ? ' locked' : '';
+      const duration = Math.max(10, Math.min(100, 22 + (meta.zIndex || 0) * 0.55));
+      const typeBadge = timelineTypeBadge(meta.type);
+      html += '<div class="timeline-track' + active + hidden + locked + '" data-type="' + escapeHtmlAttr(meta.type) + '" onclick="selectElementFromTimeline(\'' + key + '\')">' +
+        '<div class="timeline-name" title="' + escapeHtmlAttr(meta.label) + '">' +
+          '<span class="timeline-type">' + escapeHtmlText(typeBadge) + '</span>' +
+          '<span>' + (meta.locked ? 'Lock ' : '') + escapeHtmlText(meta.label) + '</span>' +
+        '</div>' +
+        '<div class="timeline-lane"><div class="timeline-bar" style="width:' + duration + '%"></div></div>' +
+        '<div class="timeline-track-actions" onclick="event.stopPropagation()">' +
+          '<button title="Mostrar/Ocultar" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + (meta.visible ? 'Ver' : 'Oc') + '</button>' +
+          '<button title="Bloquear/Desbloquear" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + (meta.locked ? 'Lock' : 'Livre') + '</button>' +
+          '<button title="Duplicar" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')">Dup</button>' +
+          '<button title="Apagar" ' + (meta.deletable ? '' : 'disabled ') + 'onclick="window.layerCmd(\'delete\', \'' + key + '\')">Del</button>' +
+        '</div>' +
+      '</div>';
+    });
+    tracks.innerHTML = html || '<div class="keyboard-hint">Nenhuma camada disponivel.</div>';
+  }
+
+  function timelineTypeBadge(type) {
+    if (type === 'textBox') return 'T';
+    if (type === 'badge') return 'B';
+    if (type === 'image' || type === 'logo' || type === 'lockedImage') return 'I';
+    if (type === 'gradientOverlay' || type === 'overlay') return 'G';
+    if (type === 'shapeLine') return 'L';
+    if (type === 'shape') return 'F';
+    return '?';
+  }
+
+  function updateEditorChrome() {
+    const meta = selectedElement ? layerMeta[selectedElement] : null;
+    const node = selectedElement ? konvaElements[selectedElement] : null;
+    const contextSelection = document.getElementById('contextSelection');
+    const floatingSelectionBar = document.getElementById('floatingSelectionBar');
+    const contextTypeTools = document.getElementById('contextTypeTools');
+    if (contextSelection) {
+      contextSelection.textContent = meta ? (meta.label + ' · ' + visualLayerType(meta.type)) : 'Nenhuma camada selecionada';
+    }
+    if (contextTypeTools) {
+      contextTypeTools.innerHTML = meta && node ? renderContextTypeTools(selectedElement, node, meta) : '';
+    }
+    if (floatingSelectionBar) {
+      floatingSelectionBar.classList.toggle('visible', !!meta);
+    }
+    const lockText = meta && meta.locked ? 'Desbloquear' : 'Bloquear';
+    ['contextLock', 'floatLock'].forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.textContent = id === 'floatLock' ? (meta && meta.locked ? 'Livre' : 'Lock') : lockText;
+    });
+    ['contextDelete', 'floatDelete'].forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = !meta || !meta.deletable;
+    });
+    ['contextDuplicate', 'contextLock', 'contextBack', 'contextFront', 'floatDuplicate', 'floatLock', 'floatFront'].forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = !meta;
+    });
+  }
+
+  function updateWorkspaceViewButtons() {
+    const shell = document.querySelector('.studio-shell');
+    if (!shell) return;
+    const leftCollapsed = shell.classList.contains('left-collapsed') || shell.classList.contains('focus-mode');
+    const rightCollapsed = shell.classList.contains('right-collapsed') || shell.classList.contains('focus-mode');
+    const focusMode = shell.classList.contains('focus-mode');
+    const layersBtn = document.getElementById('btnToggleLayers');
+    const propertiesBtn = document.getElementById('btnToggleProperties');
+    const focusBtn = document.getElementById('btnFocusStudio');
+    if (layersBtn) {
+      layersBtn.textContent = leftCollapsed ? 'Mostrar camadas' : 'Ocultar camadas';
+      layersBtn.classList.toggle('active', leftCollapsed);
+    }
+    if (propertiesBtn) {
+      propertiesBtn.textContent = rightCollapsed ? 'Mostrar propriedades' : 'Ocultar propriedades';
+      propertiesBtn.classList.toggle('active', rightCollapsed);
+    }
+    if (focusBtn) {
+      focusBtn.textContent = focusMode ? 'Sair do foco' : 'Modo foco';
+      focusBtn.classList.toggle('active', focusMode);
+    }
+  }
+
+  function afterWorkspaceLayoutChange() {
+    updateWorkspaceViewButtons();
+    window.requestAnimationFrame(function () {
+      fitCanvasToView();
+      centerCanvasInView();
+    });
+  }
+
+  function toggleWorkspacePanel(panel) {
+    const shell = document.querySelector('.studio-shell');
+    if (!shell) return;
+    shell.classList.remove('focus-mode');
+    if (panel === 'layers') shell.classList.toggle('left-collapsed');
+    if (panel === 'properties') shell.classList.toggle('right-collapsed');
+    afterWorkspaceLayoutChange();
+  }
+
+  function toggleFocusMode() {
+    const shell = document.querySelector('.studio-shell');
+    if (!shell) return;
+    const nextFocus = !shell.classList.contains('focus-mode');
+    shell.classList.toggle('focus-mode', nextFocus);
+    if (!nextFocus) {
+      shell.classList.remove('left-collapsed');
+      shell.classList.remove('right-collapsed');
+    }
+    afterWorkspaceLayoutChange();
+  }
+
+  function setShortcutHelp(open) {
+    const modal = document.getElementById('shortcutModal');
+    if (!modal) return;
+    modal.classList.toggle('open', !!open);
+    modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+  }
+
+  function toggleShortcutHelp() {
+    const modal = document.getElementById('shortcutModal');
+    setShortcutHelp(!(modal && modal.classList.contains('open')));
+  }
+
+  function getSelectedEditableNode() {
+    if (!selectedElement) {
+      showStatus('Selecione uma camada para usar esta ferramenta.', 'info');
+      return null;
+    }
+    const node = konvaElements[selectedElement];
+    const meta = layerMeta[selectedElement];
+    if (!node || !meta) return null;
+    if (meta.locked) {
+      showStatus('A camada selecionada esta bloqueada.', 'info');
+      return null;
+    }
+    return node;
+  }
+
+  function alignSelectedLayer(mode) {
+    const node = getSelectedEditableNode();
+    if (!node || !layer) return;
+    const box = node.getClientRect({ relativeTo: layer, skipStroke: false, skipShadow: true });
+    if (!box || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return;
+    let dx = 0;
+    let dy = 0;
+    if (mode === 'left') dx = -box.x;
+    if (mode === 'centerH') dx = (CANVAS_WIDTH - box.width) / 2 - box.x;
+    if (mode === 'right') dx = CANVAS_WIDTH - (box.x + box.width);
+    if (mode === 'top') dy = -box.y;
+    if (mode === 'centerV') dy = (CANVAS_HEIGHT - box.height) / 2 - box.y;
+    if (mode === 'bottom') dy = CANVAS_HEIGHT - (box.y + box.height);
+    saveUndo();
+    node.x(Math.round(node.x() + dx));
+    node.y(Math.round(node.y() + dy));
+    layer.draw();
+    updateElementList();
+    updatePropertiesPanel(selectedElement);
+    refreshSelectionIndicator();
+    showStatus('Camada alinhada.', 'success');
+  }
+
+  function renderContextTypeTools(key, node, meta) {
+    if (meta.type === 'textBox') {
+      return contextSelect(key, 'fontWeight', 'Peso', node.fontStyle() || 'normal', ['normal', 'bold']) +
+        contextNumber(key, 'fontSize', 'Fonte', node.fontSize(), 1) +
+        contextColor(key, 'color', 'Cor', node.fill()) +
+        contextNumber(key, 'lineHeightPx', 'Linha', getTextLineHeightPx(node), 1);
+    }
+    if (meta.type === 'badge') {
+      const bg = node.findOne('.badge-bg');
+      const text = node.findOne('.badge-text');
+      return contextColor(key, 'background', 'Fundo', bg ? bg.fill() : URURAU_OFFICIAL_RED) +
+        contextColor(key, 'textColor', 'Texto', text ? text.fill() : '#ffffff') +
+        contextNumber(key, 'fontSize', 'Fonte', text ? text.fontSize() : 22, 1) +
+        contextSelect(key, 'autoWidth', 'Auto', node.getAttr('autoWidth') !== false ? 'true' : 'false', ['true', 'false']);
+    }
+    if (meta.type === 'image' || meta.type === 'logo') {
+      return contextSelect(key, 'fitMode', 'Fit', node.getAttr('fitMode') || node.getAttr('objectFit') || 'cover', ['cover', 'contain', 'fill']) +
+        contextNumber(key, 'zoom', 'Zoom', Math.max(0.1, numOr(node.getAttr('zoom'), 1)), 0.1) +
+        contextNumber(key, 'panX', 'Pan X', numOr(node.getAttr('panX'), 0), 1) +
+        contextNumber(key, 'panY', 'Pan Y', numOr(node.getAttr('panY'), 0), 1) +
+        '<button class="context-button" onclick="window.centerImageCrop(\'' + key + '\')" title="Centralizar imagem selecionada">Centralizar</button>';
+    }
+    if (meta.type === 'gradientOverlay') {
+      return contextNumber(key, 'angle', 'Angulo', Math.round(numOr(node.getAttr('angle'), 90)), 1) +
+        contextRange(key, 'opacity', 'Opacidade', node.opacity()) +
+        '<button class="context-button" onclick="window.addGradientStop(\'' + key + '\')" title="Adicionar color stop">+ stop</button>';
+    }
+    if (meta.type === 'shapeLine') {
+      const visible = node.findOne('.separator-visible') || node;
+      return contextColor(key, 'color', 'Cor', visible.fill()) +
+        contextNumber(key, 'width', 'Largura', Math.round(visible.width()), 1) +
+        contextRange(key, 'opacity', 'Opacidade', node.opacity());
+    }
+    if (meta.type === 'overlay' || meta.type === 'shape') {
+      return contextColor(key, 'color', 'Cor', node.fill ? node.fill() : '#000000') +
+        contextRange(key, 'opacity', 'Opacidade', node.opacity()) +
+        contextNumber(key, 'borderRadius', 'Raio', node.cornerRadius ? node.cornerRadius() : 0, 1);
+    }
+    if (meta.type === 'lockedImage') {
+      return contextRange(key, 'opacity', 'Opacidade', node.opacity());
+    }
+    return '';
+  }
+
+  function contextNumber(key, prop, label, value, step) {
+    return '<label class="context-field">' + escapeHtmlText(label) +
+      '<input type="number" step="' + escapeHtmlAttr(step || 1) + '" value="' + escapeHtmlAttr(value) + '" onchange="window.updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">' +
+      '</label>';
+  }
+
+  function contextRange(key, prop, label, value) {
+    return '<label class="context-field">' + escapeHtmlText(label) +
+      '<input type="range" min="0" max="1" step="0.05" value="' + escapeHtmlAttr(clamp01(numOr(value, 1))) + '" oninput="window.updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">' +
+      '</label>';
+  }
+
+  function contextColor(key, prop, label, value) {
+    const color = isHexColor(value) ? value : '#000000';
+    return '<label class="context-field">' + escapeHtmlText(label) +
+      '<input type="color" value="' + escapeHtmlAttr(color) + '" onchange="window.updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">' +
+      '</label>';
+  }
+
+  function contextSelect(key, prop, label, value, options) {
+    let html = '<label class="context-field">' + escapeHtmlText(label) +
+      '<select onchange="window.updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">';
+    options.forEach(function (option) {
+      html += '<option value="' + escapeHtmlAttr(option) + '"' + (String(option) === String(value) ? ' selected' : '') + '>' + escapeHtmlText(option) + '</option>';
+    });
+    html += '</select></label>';
+    return html;
+  }
+
+  window.layerCmd = function (cmd, key) {
+    if (cmd === 'up') moveLayerBy(key, 1);
+    else if (cmd === 'down') moveLayerBy(key, -1);
+    else if (cmd === 'front') moveLayerToFront(key);
+    else if (cmd === 'back') moveLayerToBack(key);
+    else if (cmd === 'visible') toggleVisible(key);
+    else if (cmd === 'lock') toggleLocked(key);
+    else if (cmd === 'duplicate') duplicateLayer(key);
+    else if (cmd === 'delete') deleteLayer(key);
+  };
+  window.selectElementFromTimeline = selectElement;
+
+  // ============================================================
+  // PAINEL DE PROPRIEDADES
+  // ============================================================
+  function updatePropertiesPanel(key) {
+    const node = konvaElements[key];
+    const meta = layerMeta[key];
+    if (!node || !meta) return;
+    const componentType = meta.type;
+    let commonHtml = sectionHtml('Comum',
+      '<div class="tool-group"><label>Componente</label><input type="text" value="' +
+      escapeHtmlAttr(meta.label + ' / ' + componentType) + '" disabled></div>' +
+      '<div class="tool-row">' +
+        numberControl(key, 'x', 'X', Math.round(node.x())) +
+        numberControl(key, 'y', 'Y', Math.round(node.y())) +
+      '</div>' +
+      '<div class="tool-row">' +
+        numberControl(key, 'zIndex', 'zIndex', meta.zIndex) +
+        numberControl(key, 'rotation', 'Rotacao (deg)', Math.round(node.rotation ? node.rotation() : 0)) +
+      '</div>' +
+      '<div class="tool-row">' +
+        checkboxControl(key, 'visible', 'Visivel', meta.visible) +
+        checkboxControl(key, 'locked', 'Bloqueado', meta.locked) +
+      '</div>'
+    );
+
+    let specificTitle = 'Visual';
+    let specificBody = '';
+    if (componentType === 'badge') { specificTitle = 'Badge'; specificBody = renderBadgeControls(key, node); }
+    else if (componentType === 'shapeLine') { specificTitle = 'Linha'; specificBody = renderShapeLineControls(key, node); }
+    else if (componentType === 'textBox') { specificTitle = 'Texto'; specificBody = renderTextBoxControls(key, node); }
+    else if (componentType === 'overlay') { specificTitle = 'Forma'; specificBody = renderOverlayControls(key, node); }
+    else if (componentType === 'gradientOverlay') { specificTitle = 'Gradiente'; specificBody = renderGradientOverlayControls(key, node); }
+    else if (componentType === 'image' || componentType === 'logo') { specificTitle = 'Imagem'; specificBody = renderImageControls(key, node); }
+    else if (componentType === 'shape') { specificTitle = 'Forma'; specificBody = renderShapeControls(key, node); }
+    else if (componentType === 'lockedImage') { specificTitle = 'Cabecalho'; specificBody = renderLockedImageControls(key, node); }
+    else { specificTitle = 'Imagem'; specificBody = renderImageControls(key, node); }
+
+    const html = renderPropertySummary(key, node, meta) +
+      '<div class="property-tabs" role="tablist">' +
+        '<button class="property-tab active" type="button" data-property-tab="common">Ajustes</button>' +
+        '<button class="property-tab" type="button" data-property-tab="specific">' + escapeHtmlText(specificTitle) + '</button>' +
+        '<button class="property-tab" type="button" data-property-tab="advanced">Avancado</button>' +
+      '</div>' +
+      '<div class="property-view active" data-property-view="common">' + commonHtml + '</div>' +
+      '<div class="property-view" data-property-view="specific">' + sectionHtml(specificTitle, specificBody) + '</div>' +
+      '<div class="property-view" data-property-view="advanced">' +
+        sectionHtml('Camada', renderAdvancedLayerControls(key, node, meta)) +
+      '</div>';
+    document.getElementById('propertiesPanel').innerHTML = html;
+    setupPropertyTabs();
+  }
+
+  function renderPropertySummary(key, node, meta) {
+    const box = node && node.getClientRect ? node.getClientRect({ relativeTo: layer }) : null;
+    const size = box ? Math.round(box.width) + 'x' + Math.round(box.height) : Math.round(node.width ? node.width() : 0) + 'x' + Math.round(node.height ? node.height() : 0);
+    return '<div class="property-summary">' +
+      '<div class="property-summary-main">' +
+        '<div class="property-summary-title" title="' + escapeHtmlAttr(meta.label) + '">' + escapeHtmlText(meta.label) + '</div>' +
+        '<div class="property-summary-type">' + escapeHtmlText(visualLayerType(meta.type)) + '</div>' +
+      '</div>' +
+      '<div class="property-summary-meta">' +
+        '<span class="el-pill">ID: ' + escapeHtmlText(key) + '</span>' +
+        '<span class="el-pill">Z ' + escapeHtmlText(meta.zIndex) + '</span>' +
+        '<span class="el-pill">' + (meta.visible ? 'Visivel' : 'Oculta') + '</span>' +
+        '<span class="el-pill">' + (meta.locked ? 'Bloqueada' : 'Livre') + '</span>' +
+        '<span class="el-pill">' + escapeHtmlText(size) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderAdvancedLayerControls(key, node, meta) {
+    return '<div class="tool-row">' +
+        numberControl(key, 'zIndex', 'zIndex', meta.zIndex) +
+        numberControl(key, 'rotation', 'Rotacao (deg)', Math.round(node.rotation ? node.rotation() : 0)) +
+      '</div>' +
+      '<div class="tool-row">' +
+        checkboxControl(key, 'visible', 'Visivel', meta.visible) +
+        checkboxControl(key, 'locked', 'Bloqueado', meta.locked) +
+      '</div>' +
+      '<div class="tool-mini-row">' +
+        '<button class="btn-editor" onclick="window.layerCmd(\'front\', \'' + key + '\')" type="button">Frente</button>' +
+        '<button class="btn-editor" onclick="window.layerCmd(\'back\', \'' + key + '\')" type="button">Tras</button>' +
+      '</div>' +
+      '<div class="tool-mini-row">' +
+        '<button class="btn-editor" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')" type="button">Duplicar</button>' +
+        '<button class="btn-editor danger" ' + (meta.deletable ? '' : 'disabled ') + 'onclick="window.layerCmd(\'delete\', \'' + key + '\')" type="button">Apagar</button>' +
+      '</div>';
+  }
+
+  function setupPropertyTabs() {
+    const tabs = Array.prototype.slice.call(document.querySelectorAll('[data-property-tab]'));
+    const views = Array.prototype.slice.call(document.querySelectorAll('[data-property-view]'));
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        const target = tab.getAttribute('data-property-tab');
+        tabs.forEach(function (item) { item.classList.toggle('active', item === tab); });
+        views.forEach(function (view) {
+          view.classList.toggle('active', view.getAttribute('data-property-view') === target);
+        });
+      });
+    });
+  }
+
+  function renderBadgeControls(key, node) {
+    const bg = node.findOne('.badge-bg');
+    const text = node.findOne('.badge-text');
+    if (!bg || !text) return '';
+    const autoWidth = node.getAttr('autoWidth') !== false;
+    return textControl(key, 'text', 'Texto da editoria', text.text()) +
+      '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(bg.width())) + numberControl(key, 'height', 'Altura', Math.round(bg.height())) + '</div>' +
+      checkboxControl(key, 'autoWidth', 'Auto largura', autoWidth) +
+      '<div class="tool-row">' + colorControl(key, 'background', 'Fundo', bg.fill()) + colorControl(key, 'textColor', 'Cor do texto', text.fill()) + '</div>' +
+      textControl(key, 'fontFamily', 'Fonte', text.fontFamily()) +
+      '<div class="tool-row">' +
+        selectControl(key, 'fontWeight', 'Peso', text.fontStyle(), ['normal', 'bold', '400', '700']) +
+        selectControl(key, 'textTransform', 'Transformacao', node.getAttr('textTransform') || 'uppercase', ['uppercase', 'none', 'lowercase', 'capitalize']) +
+      '</div>' +
+      '<div class="tool-row">' + numberControl(key, 'fontSize', 'Fonte (px)', text.fontSize()) + numberControl(key, 'letterSpacing', 'Espacamento', text.letterSpacing ? text.letterSpacing() : 0) + '</div>' +
+      '<div class="tool-row">' + numberControl(key, 'paddingX', 'Padding X', node.getAttr('paddingX')) + numberControl(key, 'paddingY', 'Padding Y', node.getAttr('paddingY')) + '</div>' +
+      '<div class="tool-row">' + numberControl(key, 'borderRadius', 'Raio', bg.cornerRadius()) + rangeControl(key, 'opacity', 'Opacidade', node.opacity()) + '</div>';
+  }
+
+  function renderShapeLineControls(key, node) {
+    const visible = node.findOne('.separator-visible') || node;
+    return '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(visible.width())) + numberControl(key, 'height', 'Altura visual', Math.round(visible.height())) + '</div>' +
+      '<div class="tool-row">' + colorControl(key, 'color', 'Cor', visible.fill()) + rangeControl(key, 'opacity', 'Opacidade', node.opacity()) + '</div>';
+  }
+
+  function renderTextBoxControls(key, node) {
+    return textareaControl(key, 'text', 'Texto', node.text()) +
+      '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(node.width())) + numberControl(key, 'fontSize', 'Fonte (px)', node.fontSize()) + '</div>' +
+      '<div class="tool-row">' + numberControl(key, 'lineHeightPx', 'Linha (px)', getTextLineHeightPx(node)) + colorControl(key, 'color', 'Cor', node.fill()) + '</div>' +
+      '<div class="tool-row">' + textControl(key, 'fontFamily', 'Fonte', node.fontFamily()) + selectControl(key, 'fontWeight', 'Peso', node.fontStyle() || 'normal', ['normal', 'bold', '400', '700']) + '</div>' +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity());
+  }
+
+  function renderOverlayControls(key, node) {
+    return '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(node.width())) + numberControl(key, 'height', 'Altura', Math.round(node.height())) + '</div>' +
+      '<div class="tool-row">' + colorControl(key, 'color', 'Cor', node.fill()) + rangeControl(key, 'opacity', 'Opacidade', node.opacity()) + '</div>' +
+      numberControl(key, 'borderRadius', 'Raio', node.cornerRadius ? node.cornerRadius() : 0);
+  }
+
+  function renderGradientOverlayControls(key, node) {
+    const stops = node.getAttr('colorStops') || [];
+    const angle = numOr(node.getAttr('angle'), 90);
+    let html = '<div class="tool-row">' +
+      numberControl(key, 'width', 'Largura', Math.round(node.width())) +
+      numberControl(key, 'height', 'Altura', Math.round(node.height())) +
+      '</div>' +
+      '<div class="tool-row">' +
+      numberControl(key, 'angle', 'Angulo (deg)', Math.round(angle)) +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
+      '</div>' +
+      '<div class="tool-group" style="font-size:11px;color:#a0a0b0;margin-top:6px"><label>Color stops</label>';
+    stops.forEach(function (s, i) {
+      html += '<div class="tool-row" style="margin:4px 0">' +
+        '<input type="number" min="0" max="1" step="0.05" value="' + escapeHtmlAttr(s.offset) + '" onchange="window.updateGradientStop(\'' + key + '\', ' + i + ', \'offset\', this.value)">' +
+        '<input type="text" value="' + escapeHtmlAttr(s.color) + '" placeholder="rgba(0,0,0,1) ou #000" onchange="window.updateGradientStop(\'' + key + '\', ' + i + ', \'color\', this.value)">' +
+        '</div>';
+    });
+    html += '<div style="margin-top:6px;display:flex;gap:6px">' +
+      '<button style="flex:1;padding:6px;background:transparent;border:1px solid #1a1a3a;border-radius:6px;color:#fff;cursor:pointer" onclick="window.addGradientStop(\'' + key + '\')">+ stop</button>' +
+      '<button style="flex:1;padding:6px;background:transparent;border:1px solid #1a1a3a;border-radius:6px;color:#fff;cursor:pointer" onclick="window.removeGradientStop(\'' + key + '\')">- stop</button>' +
+      '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  window.updateGradientStop = function (key, index, prop, value) {
+    const node = konvaElements[key];
+    if (!node) return;
+    const stops = node.getAttr('colorStops') || [];
+    if (!stops[index]) return;
+    saveUndo();
+    if (prop === 'offset') stops[index].offset = clamp01(numOr(value, stops[index].offset));
+    else stops[index].color = String(value);
+    stops.sort(function (a, b) { return a.offset - b.offset; });
+    node.setAttr('colorStops', stops);
+    applyGradientUpdate(node);
+    layer.draw();
+    updatePropertiesPanel(key);
+    refreshSelectionIndicator();
+  };
+  window.addGradientStop = function (key) {
+    const node = konvaElements[key];
+    if (!node) return;
+    const stops = node.getAttr('colorStops') || [];
+    saveUndo();
+    stops.push({ offset: 0.5, color: 'rgba(0,0,0,0.5)' });
+    stops.sort(function (a, b) { return a.offset - b.offset; });
+    node.setAttr('colorStops', stops);
+    applyGradientUpdate(node);
+    layer.draw();
+    updatePropertiesPanel(key);
+  };
+  window.removeGradientStop = function (key) {
+    const node = konvaElements[key];
+    if (!node) return;
+    const stops = node.getAttr('colorStops') || [];
+    if (stops.length <= 2) { showStatus('Gradiente precisa de pelo menos 2 stops.', 'info'); return; }
+    saveUndo();
+    stops.pop();
+    node.setAttr('colorStops', stops);
+    applyGradientUpdate(node);
+    layer.draw();
+    updatePropertiesPanel(key);
+  };
+
+  function renderShapeControls(key, node) {
+    return '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(node.width())) + numberControl(key, 'height', 'Altura', Math.round(node.height())) + '</div>' +
+      '<div class="tool-row">' + colorControl(key, 'color', 'Cor', node.fill()) + rangeControl(key, 'opacity', 'Opacidade', node.opacity()) + '</div>';
+  }
+
+  function renderImageControls(key, node) {
+    const w = (node.width ? node.width() : 0);
+    const h = (node.height ? node.height() : 0);
+    const fitMode = node.getAttr('fitMode') || node.getAttr('objectFit') || 'cover';
+    const focal = node.getAttr('focalPoint') || { x: node.getAttr('focalX'), y: node.getAttr('focalY') };
+    const src = node.getAttr('src') || '';
+    return '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(w)) + numberControl(key, 'height', 'Altura', Math.round(h)) + '</div>' +
+      textControl(key, 'src', 'Src / URL / Data URL', src) +
+      selectControl(key, 'fitMode', 'Fit', fitMode, ['cover', 'contain', 'fill']) +
+      '<div class="tool-row">' +
+        numberControl(key, 'focalX', 'Focal X (0-1)', clamp01(numOr(node.getAttr('focalX'), focal.x != null ? focal.x : 0.5))) +
+        numberControl(key, 'focalY', 'Focal Y (0-1)', clamp01(numOr(node.getAttr('focalY'), focal.y != null ? focal.y : 0.5))) +
+      '</div>' +
+      '<div class="tool-row">' +
+        numberControl(key, 'zoom', 'Zoom crop', Math.max(0.1, numOr(node.getAttr('zoom'), 1))) +
+        numberControl(key, 'panX', 'Pan X', numOr(node.getAttr('panX'), 0)) +
+      '</div>' +
+      '<div class="tool-row">' +
+        numberControl(key, 'panY', 'Pan Y', numOr(node.getAttr('panY'), 0)) +
+        rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
+      '</div>' +
+      '<div class="tool-mini-row">' +
+        '<button class="btn-editor" onclick="window.centerImageCrop(\'' + key + '\')" title="Centralizar imagem dentro do quadro">Centralizar</button>' +
+        '<button class="btn-editor" onclick="window.resetImageCrop(\'' + key + '\')" title="Resetar recorte para o padrao">Resetar recorte</button>' +
+      '</div>' +
+      '<div class="keyboard-hint">Use focal, zoom e pan para mover a imagem dentro do quadro sem alterar o tamanho da moldura.</div>';
+  }
+
+  function renderLockedImageControls(key, node) {
+    return '<div class="tool-group" style="font-size:11px;color:#a0a0b0;">Cabecalho oficial (logo + 19 ANOS + icone U). Locked: nao move/edita. Use os botoes de camada para ocultar.</div>' +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity());
+  }
+
+  function updateNodeProp(key, prop, value) {
+    const node = konvaElements[key];
+    const meta = layerMeta[key];
+    if (!node || !meta) return;
+    saveUndo();
+
+    // Props comuns a todos os tipos
+    if (prop === 'rotation' && typeof node.rotation === 'function') {
+      node.rotation(numOr(value, 0));
+      layer.draw();
+      updatePropertiesPanel(key);
+      updateElementList();
+      refreshSelectionIndicator();
+      return;
+    }
+    if (prop === 'zIndex') {
+      const newZ = parseInt(value, 10);
+      if (Number.isFinite(newZ)) {
+        meta.zIndex = newZ;
+        if (templateData.layers[key]) templateData.layers[key].zIndex = newZ;
+        applyZIndexOrder();
+        layer.draw();
+        updatePropertiesPanel(key);
+        updateElementList();
+        refreshSelectionIndicator();
+      }
+      return;
+    }
+    if (prop === 'visible') {
+      const visible = value === true || value === 'true';
+      meta.visible = visible;
+      if (templateData.layers[key]) templateData.layers[key].visible = visible;
+      node.visible(visible);
+      layer.draw();
+      updatePropertiesPanel(key);
+      updateElementList();
+      refreshSelectionIndicator();
+      return;
+    }
+    if (prop === 'locked') {
+      if (FORCED_LOCKED_KEYS.has(key)) {
+        showStatus('Esta camada nao pode ser desbloqueada (' + key + ').', 'info');
+        updatePropertiesPanel(key);
+        return;
+      }
+      const locked = value === true || value === 'true';
+      meta.locked = locked;
+      if (templateData.layers[key]) templateData.layers[key].locked = locked;
+      if (typeof node.draggable === 'function') node.draggable(!locked);
+      if (typeof node.listening === 'function') node.listening(!locked);
+      layer.draw();
+      updatePropertiesPanel(key);
+      updateElementList();
+      refreshSelectionIndicator();
+      return;
+    }
+
+    if (meta.type === 'badge') updateBadgeProp(node, prop, value);
+    else if (meta.type === 'shapeLine') updateShapeLineProp(node, prop, value);
+    else if (meta.type === 'textBox') updateTextBoxProp(node, prop, value);
+    else if (meta.type === 'overlay') updateOverlayProp(node, prop, value);
+    else if (meta.type === 'gradientOverlay') updateGradientOverlayProp(node, prop, value);
+    else if (meta.type === 'image' || meta.type === 'logo') updateImageProp(node, prop, value);
+    else if (meta.type === 'shape') updateShapeProp(node, prop, value);
+    else if (meta.type === 'lockedImage') updateLockedImageProp(node, prop, value);
+    layer.draw();
+    updateElementList();
+    updatePropertiesPanel(key);
+    refreshSelectionIndicator();
+  }
+  window.updateNodePropFromInput = updateNodeProp;
+
+  function updateGradientOverlayProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') { node.setAttr(prop, numOr(value, node.getAttr(prop))); return; }
+    if (prop === 'width') { node.width(Math.max(1, numOr(value, node.width()))); applyGradientUpdate(node); return; }
+    if (prop === 'height') { node.height(Math.max(1, numOr(value, node.height()))); applyGradientUpdate(node); return; }
+    if (prop === 'angle') { node.setAttr('angle', numOr(value, node.getAttr('angle'))); applyGradientUpdate(node); return; }
+    if (prop === 'opacity') { node.opacity(clamp01(numOr(value, node.opacity()))); return; }
+  }
+
+  function updateBadgeProp(group, prop, value) {
+    const bg = group.findOne('.badge-bg');
+    const text = group.findOne('.badge-text');
+    if (prop === 'x' || prop === 'y') { group.setAttr(prop, numOr(value, group.getAttr(prop))); return; }
+    if (prop === 'text' && text) { text.text(formatCategoryLabel(value, { textTransform: group.getAttr('textTransform') })); resizeBadgeToText(group); return; }
+    if ((prop === 'background' || prop === 'color' || prop === 'fill') && bg) { bg.fill(value); return; }
+    if (prop === 'textColor' && text) { text.fill(value); return; }
+    if (prop === 'fontFamily' && text) { text.fontFamily(normalizeFontFamily(value)); group.setAttr('fontFamily', normalizeFontFamily(value)); resizeBadgeToText(group); return; }
+    if (prop === 'fontWeight' && text) { const w = normalizeFontWeight(value, 'bold'); text.fontStyle(w); group.setAttr('fontWeight', w); resizeBadgeToText(group); return; }
+    if (prop === 'fontSize' && text) { text.fontSize(Math.max(1, numOr(value, text.fontSize()))); resizeBadgeToText(group); return; }
+    if (prop === 'letterSpacing' && text) { text.letterSpacing(numOr(value, text.letterSpacing ? text.letterSpacing() : 0)); group.setAttr('letterSpacing', text.letterSpacing()); resizeBadgeToText(group); return; }
+    if (prop === 'textTransform' && text) { const t = normalizeTextTransform(value); group.setAttr('textTransform', t); text.text(formatCategoryLabel(text.text(), { textTransform: t })); resizeBadgeToText(group); return; }
+    if (prop === 'width' && bg) { const w = Math.max(1, Math.round(numOr(value, bg.width()))); group.setAttr('autoWidth', false); setBadgeWidth(group, w); return; }
+    if (prop === 'height' && bg) { setBadgeHeight(group, Math.max(1, Math.round(numOr(value, bg.height())))); return; }
+    if (prop === 'paddingX') { group.setAttr('paddingX', Math.max(0, Math.round(numOr(value, group.getAttr('paddingX'))))); resizeBadgeToText(group); return; }
+    if (prop === 'paddingY') { const p = Math.max(0, Math.round(numOr(value, group.getAttr('paddingY')))); group.setAttr('paddingY', p); if (text) setBadgeHeight(group, Math.max(1, Math.round(text.fontSize() + p * 2))); return; }
+    if (prop === 'borderRadius' && bg) { bg.cornerRadius(Math.max(0, numOr(value, bg.cornerRadius()))); group.setAttr('borderRadius', bg.cornerRadius()); return; }
+    if (prop === 'autoWidth') { group.setAttr('autoWidth', value === true || value === 'true'); resizeBadgeToText(group); return; }
+    if (prop === 'opacity') group.opacity(clamp01(numOr(value, group.opacity())));
+  }
+
+  function updateShapeLineProp(group, prop, value) {
+    const visible = group.findOne('.separator-visible');
+    const hit = group.findOne('.separator-hit');
+    if (prop === 'x' || prop === 'y') { group.setAttr(prop, numOr(value, group.getAttr(prop))); return; }
+    if (!visible) return;
+    if (prop === 'width') { const w = Math.max(1, Math.round(numOr(value, visible.width()))); visible.width(w); if (hit) hit.width(w); group.width(w); return; }
+    if (prop === 'height') { const h = Math.max(1, Math.round(numOr(value, visible.height()))); visible.height(h); updateSeparatorHitArea(group); return; }
+    if (prop === 'color' || prop === 'fill') { visible.fill(value); return; }
+    if (prop === 'opacity') group.opacity(clamp01(numOr(value, group.opacity())));
+  }
+
+  function updateTextBoxProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') node.setAttr(prop, numOr(value, node.getAttr(prop)));
+    else if (prop === 'text') node.text(value);
+    else if (prop === 'width') node.width(Math.max(1, numOr(value, node.width())));
+    else if (prop === 'fontSize') node.fontSize(Math.max(1, numOr(value, node.fontSize())));
+    else if (prop === 'fontFamily') node.fontFamily(normalizeFontFamily(value));
+    else if (prop === 'fontWeight') node.fontStyle(normalizeFontWeight(value, 'normal'));
+    else if (prop === 'color' || prop === 'fill') node.fill(value);
+    else if (prop === 'lineHeightPx') node.lineHeight(Math.max(0.1, numOr(value, getTextLineHeightPx(node)) / node.fontSize()));
+    else if (prop === 'opacity') node.opacity(clamp01(numOr(value, node.opacity())));
+  }
+
+  function updateOverlayProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') node.setAttr(prop, numOr(value, node.getAttr(prop)));
+    else if (prop === 'width') node.width(Math.max(1, numOr(value, node.width())));
+    else if (prop === 'height') node.height(Math.max(1, numOr(value, node.height())));
+    else if (prop === 'color' || prop === 'fill' || prop === 'background') node.fill(value);
+    else if (prop === 'opacity') node.opacity(clamp01(numOr(value, node.opacity())));
+    else if (prop === 'borderRadius' && node.cornerRadius) node.cornerRadius(Math.max(0, numOr(value, node.cornerRadius())));
+  }
+
+  function updateImageProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') node.setAttr(prop, numOr(value, node.getAttr(prop)));
+    else if (prop === 'width') { node.width(Math.max(1, numOr(value, node.width()))); if (node.image && node.image()) applyImageCoverCrop(node, node.image()); }
+    else if (prop === 'height') { node.height(Math.max(1, numOr(value, node.height()))); if (node.image && node.image()) applyImageCoverCrop(node, node.image()); }
+    else if (prop === 'fitMode' || prop === 'objectFit') {
+      const mode = String(value || 'cover').toLowerCase();
+      node.setAttr('fitMode', mode);
+      node.setAttr('objectFit', mode);
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+    else if (prop === 'focalX' || prop === 'focalY') {
+      const fp = node.getAttr('focalPoint') || { x: 0.5, y: 0.5 };
+      const next = clamp01(numOr(value, prop === 'focalX' ? fp.x : fp.y));
+      node.setAttr(prop, next);
+      node.setAttr('focalPoint', {
+        x: prop === 'focalX' ? next : clamp01(numOr(node.getAttr('focalX'), fp.x)),
+        y: prop === 'focalY' ? next : clamp01(numOr(node.getAttr('focalY'), fp.y))
+      });
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+    else if (prop === 'zoom') {
+      node.setAttr('zoom', Math.max(0.1, numOr(value, node.getAttr('zoom') || 1)));
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+    else if (prop === 'panX' || prop === 'panY') {
+      node.setAttr(prop, numOr(value, node.getAttr(prop) || 0));
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+    else if (prop === 'src') {
+      const src = cleanText(value);
+      if (src) setImageSourceForKey(node.id(), src);
+    }
+    else if (prop === 'opacity') node.opacity(clamp01(numOr(value, node.opacity())));
+  }
+
+  function updateShapeProp(node, prop, value) {
+    if (prop === 'x' || prop === 'y') node.setAttr(prop, numOr(value, node.getAttr(prop)));
+    else if (prop === 'width') node.width(Math.max(1, numOr(value, node.width())));
+    else if (prop === 'height') node.height(Math.max(1, numOr(value, node.height())));
+    else if (prop === 'color' || prop === 'fill') node.fill(value);
+    else if (prop === 'opacity') node.opacity(clamp01(numOr(value, node.opacity())));
+  }
+
+  function updateLockedImageProp(node, prop, value) {
+    if (prop === 'opacity') node.opacity(clamp01(numOr(value, node.opacity())));
+  }
+
+  // ============================================================
+  // IMPORT DE DADOS DA MATERIA (postMessage)
+  // ============================================================
+  function setupArticleImport() {
+    window.addEventListener('message', function (event) {
+      if (event.origin !== window.location.origin) return;
+      const message = event.data || {};
+      if (message.type === 'autopost:article-data') {
+        applyArticleData(message.payload || {});
+        return;
+      }
+      if (message.type === 'autopost:template-snapshot-request') {
+        event.source?.postMessage({
+          type: 'autopost:template-snapshot-response',
+          requestId: message.requestId,
+          payload: buildTemplateSnapshot(true)
+        }, event.origin);
+      }
+    });
+  }
+
+  function applyArticleData(article) {
+    const data = {
+      url: cleanText(article.url),
+      category: cleanText(article.category),
+      title: cleanText(article.title),
+      summary: cleanText(article.summary),
+      image: cleanText(article.image || article.imageUrl || article.image_url),
+      author: cleanText(article.author),
+      date: cleanText(article.date || article.publishedAt || article.published_at)
+    };
+    if (!data.category && !data.title && !data.summary && !data.image && !data.author && !data.date) return;
+    saveUndo();
+    const articleUrlInput = document.getElementById('articleUrlInput');
+    if (articleUrlInput && data.url) articleUrlInput.value = data.url;
+    templateData.articleData = {
+      ...(templateData.articleData || {}),
+      ...Object.fromEntries(Object.entries(data).filter(([, value]) => value))
+    };
+    if (!templateData.defaults) templateData.defaults = {};
+
+    if (data.category && konvaElements.category) {
+      updateBadgeProp(konvaElements.category, 'text', data.category);
+      templateData.defaults.category = data.category;
+      const style = resolveCategoryStyle(data.category);
+      const bg = konvaElements.category.findOne('.badge-bg');
+      const text = konvaElements.category.findOne('.badge-text');
+      if (bg && style.background) bg.fill(style.background);
+      if (text && style.textColor) text.fill(style.textColor);
+    }
+    if (data.title) {
+      templateData.defaults.title = data.title;
+      setTextByBinding('article.title', data.title, 'title');
+    }
+    if (data.summary) {
+      templateData.defaults.summary = data.summary;
+      setTextByBinding('article.summary', data.summary, 'summary');
+    }
+    if (data.author) setTextByBinding('article.author', data.author, 'author');
+    if (data.date) setTextByBinding('article.date', data.date, 'date');
+    if (data.image) loadArticleImageUrl(data.image);
+
+    layer.draw();
+    updateElementList();
+    if (selectedElement) updatePropertiesPanel(selectedElement);
+    refreshSelectionIndicator();
+    showStatus('Dados da materia aplicados ao editor.', 'success');
+  }
+
+  function setTextByBinding(binding, value, fallbackKey) {
+    let applied = false;
+    Object.keys(konvaElements).forEach(function (key) {
+      const node = konvaElements[key];
+      const cfg = (templateData.layers && templateData.layers[key]) || {};
+      if (!node || !node.text || cfg.binding !== binding) return;
+      node.text(value);
+      applied = true;
+    });
+    if (!applied && fallbackKey && konvaElements[fallbackKey] && konvaElements[fallbackKey].text) {
+      konvaElements[fallbackKey].text(value);
+    }
+  }
+
+  async function scrapeArticleFromEditor() {
+    const input = document.getElementById('articleUrlInput');
+    const url = cleanText(input && input.value);
+    if (!url) {
+      showStatus('Informe uma URL de materia para extrair.', 'error');
+      return;
+    }
+    if (isCanvaTemplateUrl(url)) {
+      await analyzeCanvaTemplateLink(url);
+      return;
+    }
+    showStatus('Extraindo dados da materia...', 'info');
+    try {
+      const res = await fetch('/api/template/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.success) {
+        showStatus(data.error || 'Falha ao extrair dados da materia.', 'error');
+        return;
+      }
+      applyArticleData({
+        url: data.url || url,
+        category: data.category || '',
+        title: data.title || '',
+        summary: data.summary || '',
+        image: data.image || data.imageUrl || data.image_url || '',
+        author: data.author || '',
+        date: data.date || data.publishedAt || data.published_at || ''
+      });
+      if (input) input.value = data.url || url;
+      showStatus('Dados extraidos e aplicados ao template.', 'success');
+    } catch (err) {
+      showStatus('Erro de conexao ao extrair URL: ' + (err.message || 'falha desconhecida'), 'error');
+    }
+  }
+
+  function loadArticleImageUrl(url) {
+    const key = 'articleImage';
+    if (!templateData.layers[key]) {
+      ensureLayer(key, { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, src: '', fitMode: 'cover', objectFit: 'cover', opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
+      layerMeta[key] = readMeta(key, templateData.layers[key]);
+    }
+    templateData.layers[key].src = url;
+    const config = templateData.layers[key];
+    const meta = layerMeta[key];
+    if (meta) {
+      meta.visible = true;
+      meta.locked = false;
+      meta.zIndex = DEFAULT_Z_INDEX.articleImage;
+    }
+    Object.assign(config, {
+      x: 0,
+      y: 0,
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+      fitMode: 'cover',
+      objectFit: 'cover',
+      focalX: config.focalX == null ? 0.5 : config.focalX,
+      focalY: config.focalY == null ? 0.5 : config.focalY,
+      focalPoint: config.focalPoint || { x: config.focalX == null ? 0.5 : config.focalX, y: config.focalY == null ? 0.5 : config.focalY },
+      zoom: config.zoom == null ? 1 : config.zoom,
+      panX: config.panX == null ? 0 : config.panX,
+      panY: config.panY == null ? 0 : config.panY,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      zIndex: DEFAULT_Z_INDEX.articleImage,
+      binding: 'article.image'
+    });
+
+    // Se ja existe um nó (placeholder ou Image), o substituimos
+    const existing = konvaElements[key];
+    if (existing) {
+      existing.destroy();
+      delete konvaElements[key];
+    }
+    loadImageNode(key, url, config, meta).catch(function () {
+      showStatus('Nao foi possivel carregar a imagem da materia.', 'error');
+    });
+  }
+
+  function applyImageCoverCrop(node, image) {
+    const tw = node.width();
+    const th = node.height();
+    const iw = image.naturalWidth || image.width || tw;
+    const ih = image.naturalHeight || image.height || th;
+    const fitMode = String(node.getAttr('fitMode') || node.getAttr('objectFit') || 'cover').toLowerCase();
+    if (fitMode === 'fill') {
+      const crop = { x: 0, y: 0, width: iw, height: ih };
+      node.crop(crop);
+      node.setAttr('crop', crop);
+      node.setAttr('fitMode', 'fill');
+      node.setAttr('objectFit', 'fill');
+      return;
+    }
+    if (fitMode === 'contain') {
+      const crop = { x: 0, y: 0, width: iw, height: ih };
+      node.crop(crop);
+      node.setAttr('crop', crop);
+      node.setAttr('fitMode', 'contain');
+      node.setAttr('objectFit', 'contain');
+      return;
+    }
+    const zoom = Math.max(0.1, numOr(node.getAttr('zoom'), 1));
+    const scale = Math.max(tw / iw, th / ih) * zoom;
+    const cw = tw / scale;
+    const ch = th / scale;
+    const focal = node.getAttr('focalPoint') || { x: 0.5, y: 0.5 };
+    const fx = clamp01(numOr(node.getAttr('focalX'), focal.x != null ? focal.x : 0.5));
+    const fy = clamp01(numOr(node.getAttr('focalY'), focal.y != null ? focal.y : 0.5));
+    const panX = numOr(node.getAttr('panX'), 0);
+    const panY = numOr(node.getAttr('panY'), 0);
+    const baseX = (iw - cw) * fx;
+    const baseY = (ih - ch) * fy;
+    const cropX = Math.max(0, Math.min(iw - cw, baseX + panX / scale));
+    const cropY = Math.max(0, Math.min(ih - ch, baseY + panY / scale));
+    const crop = {
+      x: cropX,
+      y: cropY,
+      width: cw,
+      height: ch
+    };
+    node.crop(crop);
+    node.setAttr('crop', crop);
+    node.setAttr('focalX', fx);
+    node.setAttr('focalY', fy);
+    node.setAttr('focalPoint', { x: fx, y: fy });
+    node.setAttr('zoom', zoom);
+    node.setAttr('fitMode', 'cover');
+    node.setAttr('objectFit', 'cover');
+  }
+
+  function makeBlackTransparentImage(image, crop) {
+    if (!crop) return image;
+    try {
+      const sx = numOr(crop.x, 0);
+      const sy = numOr(crop.y, 0);
+      const sw = Math.max(1, numOr(crop.width, image.naturalWidth || image.width));
+      const sh = Math.max(1, numOr(crop.height, image.naturalHeight || image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
+      const pixels = ctx.getImageData(0, 0, sw, sh);
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        const r = pixels.data[i];
+        const g = pixels.data[i + 1];
+        const b = pixels.data[i + 2];
+        if (r < 16 && g < 16 && b < 16) pixels.data[i + 3] = 0;
+      }
+      ctx.putImageData(pixels, 0, 0);
+      return canvas;
+    } catch (e) {
+      return image;
+    }
+  }
+
+  function cleanText(v) {
+    return String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  }
+
+  function isCanvaTemplateUrl(value) {
+    try {
+      const url = new URL(String(value || '').trim());
+      return url.hostname === 'canva.link' || url.hostname === 'canva.com' || url.hostname === 'www.canva.com';
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async function analyzeCanvaTemplateLink(sourceValue) {
+    const input = document.getElementById('canvaTemplateUrlInput');
+    const fallback = document.getElementById('articleUrlInput');
+    const resultBox = document.getElementById('canvaImportResult');
+    const url = cleanText(sourceValue || (input && input.value) || (fallback && fallback.value));
+    if (!url) {
+      showStatus('Cole um link do Canva para analisar.', 'error');
+      return;
+    }
+    if (!isCanvaTemplateUrl(url)) {
+      showStatus('Informe um link canva.link ou canva.com/design.', 'error');
+      return;
+    }
+    if (input) input.value = url;
+    showStatus('Analisando link do Canva...', 'info');
+    try {
+      const res = await fetch('/api/canva/link-info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.success) {
+        showStatus(data.error || 'Falha ao analisar link do Canva.', 'error');
+        return;
+      }
+      templateData.integrations = {
+        ...(templateData.integrations || {}),
+        canva: {
+          sourceUrl: data.inputUrl || url,
+          finalUrl: data.finalUrl || url,
+          designId: data.designId || '',
+          templateId: data.templateId || data.designId || '',
+          useTemplateUrl: data.useTemplateUrl || '',
+          editableImport: false
+        }
+      };
+      if (resultBox) {
+        renderCanvaImportResult(
+          '<strong>Link Canva reconhecido.</strong><br>' +
+          (data.designId ? 'Template ID: <code>' + escapeHtmlText(data.designId) + '</code><br>' : '') +
+          (data.useTemplateUrl
+            ? '<a href="' + escapeHtmlAttr(data.useTemplateUrl) + '" target="_blank" rel="noopener noreferrer">Abrir como modelo editavel no Canva</a><br>'
+            : '<a href="' + escapeHtmlAttr(data.finalUrl || url) + '" target="_blank" rel="noopener noreferrer">Abrir no Canva</a><br>') +
+          'Para trazer tudo editavel para o Konva, cole o JSON do Canva Bridge abaixo e importe.',
+          'info'
+        );
+      }
+      showStatus(data.useTemplateUrl ? 'Modelo Canva pronto para abrir como copia editavel.' : 'Link Canva analisado.', 'info');
+    } catch (err) {
+      showStatus('Erro ao analisar link do Canva: ' + (err.message || 'falha desconhecida'), 'error');
+    }
+  }
+
+  function renderCanvaImportResult(message, kind) {
+    const resultBox = document.getElementById('canvaImportResult');
+    if (!resultBox) return;
+    resultBox.classList.add('open');
+    resultBox.style.background = kind === 'error' ? '#fff1f3' : '#eff4ff';
+    resultBox.style.borderColor = kind === 'error' ? '#fecdd3' : '#c7d7fe';
+    resultBox.style.color = kind === 'error' ? '#9f1239' : '#3538cd';
+    resultBox.innerHTML = message;
+  }
+
+  function readCanvaSnapshotInput() {
+    const input = document.getElementById('canvaSnapshotInput');
+    const raw = String(input && input.value ? input.value : '').trim();
+    if (!raw) throw new Error('Cole o JSON do Canva Bridge antes de importar.');
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      throw new Error('JSON do Canva Bridge invalido: ' + (err.message || 'erro de parse'));
+    }
+  }
+
+  function fillCanvaSnapshotExample() {
+    const input = document.getElementById('canvaSnapshotInput');
+    if (!input) return;
+    const linkInput = document.getElementById('canvaTemplateUrlInput');
+    const canvaInfo = templateData?.integrations?.canva || {};
+    input.value = JSON.stringify({
+      sourceUrl: (linkInput && linkInput.value) || canvaInfo.sourceUrl || 'https://canva.link/vlmy2uc778suvx3',
+      designId: canvaInfo.designId || canvaInfo.templateId || 'DAHIBnrQXjM',
+      canvas: { width: 1080, height: 1920 },
+      elements: [
+        {
+          id: 'canva_gradient_bottom',
+          type: 'gradient',
+          label: 'Gradiente importado do Canva',
+          x: 0,
+          y: 980,
+          width: 1080,
+          height: 660,
+          angle: 90,
+          opacity: 0.86,
+          zIndex: 28,
+          colorStops: [
+            { offset: 0, color: 'rgba(0,0,0,0)' },
+            { offset: 1, color: 'rgba(0,0,0,0.92)' }
+          ]
+        },
+        {
+          id: 'canva_badge',
+          type: 'text',
+          role: 'badge',
+          label: 'Categoria Canva',
+          text: 'OPINIAO',
+          x: 120,
+          y: 1180,
+          width: 180,
+          height: 48,
+          fontSize: 28,
+          fontWeight: 'bold',
+          color: '#FFFFFF',
+          background: '#af0014',
+          zIndex: 42
+        },
+        {
+          id: 'canva_title',
+          type: 'text',
+          role: 'title',
+          label: 'Titulo Canva',
+          text: 'Titulo importado como camada editavel',
+          x: 120,
+          y: 1248,
+          width: 760,
+          height: 180,
+          fontSize: 56,
+          fontWeight: 'bold',
+          color: '#FFFFFF',
+          lineHeight: 64,
+          zIndex: 52
+        },
+        {
+          id: 'canva_separator',
+          type: 'line',
+          label: 'Linha Canva',
+          x: 120,
+          y: 1480,
+          width: 240,
+          height: 7,
+          color: '#c11f25',
+          zIndex: 56
+        }
+      ]
+    }, null, 2);
+    renderCanvaImportResult('Exemplo carregado. Clique em <strong>Validar</strong> para testar sem salvar, ou <strong>Importar</strong> para criar camadas editaveis.', 'info');
+  }
+
+  async function importCanvaBridgeSnapshot(dryRun) {
+    let snapshot;
+    try {
+      snapshot = readCanvaSnapshotInput();
+    } catch (err) {
+      renderCanvaImportResult(escapeHtmlText(err.message), 'error');
+      showStatus(err.message, 'error');
+      return;
+    }
+    const linkInput = document.getElementById('canvaTemplateUrlInput');
+    const sourceUrl = cleanText((linkInput && linkInput.value) || snapshot.sourceUrl || '');
+    showStatus(dryRun ? 'Validando snapshot Canva...' : 'Importando camadas Canva...', 'info');
+    try {
+      const res = await fetch('/api/canva/import-snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snapshot,
+          sourceUrl,
+          dryRun: !!dryRun,
+          replaceCanvaImport: true
+        })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.success) {
+        const message = data.error || 'Falha ao importar snapshot Canva.';
+        renderCanvaImportResult(escapeHtmlText(message), 'error');
+        showStatus(message, 'error');
+        return;
+      }
+      const importedCount = (data.imported || []).length;
+      const unsupportedCount = (data.unsupported || []).length;
+      const unsupportedHtml = unsupportedCount
+        ? '<br><small>Sem conversao direta: ' + escapeHtmlText(data.unsupported.map(function (item) { return item.type || item.id; }).join(', ')) + '</small>'
+        : '';
+      renderCanvaImportResult(
+        '<strong>' + (dryRun ? 'Snapshot valido.' : 'Snapshot importado.') + '</strong><br>' +
+        'Camadas editaveis: ' + importedCount + '<br>' +
+        'Itens nao mapeados: ' + unsupportedCount +
+        unsupportedHtml,
+        'info'
+      );
+      if (!dryRun && data.template) {
+        saveUndo();
+        await restoreEditorSnapshot(data.template);
+        notifyTemplateSaved(templateData);
+        showStatus('Camadas Canva importadas para o Template Studio.', 'success');
+      } else {
+        showStatus('Snapshot Canva validado: ' + importedCount + ' camadas editaveis.', 'success');
+      }
+    } catch (err) {
+      renderCanvaImportResult('Erro ao chamar bridge Canva: ' + escapeHtmlText(err.message || 'falha desconhecida'), 'error');
+      showStatus('Erro ao chamar bridge Canva.', 'error');
+    }
+  }
+
+  // ============================================================
+  // TECLADO
+  // ============================================================
+  function isTypingTarget(target) {
+    const tag = (target && target.tagName) || '';
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!(target && target.isContentEditable);
+  }
+
+  function setupKeyboard() {
+    document.addEventListener('keydown', function (e) {
+      const key = String(e.key || '').toLowerCase();
+      const typing = isTypingTarget(e.target);
+      const commandKey = e.ctrlKey || e.metaKey;
+      const shortcutModal = document.getElementById('shortcutModal');
+      const shortcutsOpen = !!(shortcutModal && shortcutModal.classList.contains('open'));
+      if (e.key === 'Escape' && shortcutsOpen) {
+        e.preventDefault();
+        setShortcutHelp(false);
+        return;
+      }
+      if (!typing && (e.key === 'F1' || (!commandKey && !e.altKey && !e.shiftKey && e.key === '?'))) {
+        e.preventDefault();
+        toggleShortcutHelp();
+        return;
+      }
+      if (shortcutsOpen) return;
+      if (e.altKey && e.shiftKey && !commandKey) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); alignSelectedLayer('left'); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); alignSelectedLayer('right'); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); alignSelectedLayer('top'); return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); alignSelectedLayer('bottom'); return; }
+        if (key === 'c') { e.preventDefault(); alignSelectedLayer('centerH'); return; }
+        if (key === 'm') { e.preventDefault(); alignSelectedLayer('centerV'); return; }
+      }
+      if (commandKey && !e.shiftKey && key === 'z') {
+        e.preventDefault();
+        undoLastAction();
+        return;
+      }
+      if (commandKey && !e.shiftKey && key === 's') {
+        e.preventDefault();
+        saveFromEditor();
+        return;
+      }
+      if (typing) return;
+      if (commandKey && !e.shiftKey && key === 'c') {
+        e.preventDefault();
+        copySelectedLayer();
+        return;
+      }
+      if (commandKey && !e.shiftKey && key === 'v') {
+        e.preventDefault();
+        pasteCopiedLayer();
+        return;
+      }
+      if (commandKey && !e.shiftKey && key === 'd') {
+        e.preventDefault();
+        duplicateSelectedLayer();
+        return;
+      }
+      if (e.altKey && !commandKey && !e.shiftKey) {
+        if (key === 'p') { e.preventDefault(); generatePreviewKonva(); return; }
+        if (key === 'r') { e.preventDefault(); generatePreviewReal(); return; }
+        if (key === 'c') { e.preventDefault(); toggleWorkspacePanel('layers'); return; }
+        if (key === 'o') { e.preventDefault(); toggleWorkspacePanel('properties'); return; }
+        if (key === 'f') { e.preventDefault(); toggleFocusMode(); return; }
+        if (key === '1') { e.preventDefault(); setSelectedOpacity(1); return; }
+        if (key === '2') { e.preventDefault(); setSelectedOpacity(0.75); return; }
+        if (key === '3') { e.preventDefault(); setSelectedOpacity(0.5); return; }
+      }
+      if (!commandKey && !e.altKey && !e.shiftKey) {
+        if (key === 't') { e.preventDefault(); addTextLayer(); return; }
+        if (key === 'i') { e.preventDefault(); addImageLayerByUrl(); return; }
+        if (key === 'g') { e.preventDefault(); addGradientLayer(); return; }
+        if (key === 'l') { e.preventDefault(); addLineLayer(); return; }
+        if (key === 'u') {
+          const upload = document.getElementById('imageUploadInput');
+          if (upload) { e.preventDefault(); upload.click(); return; }
+        }
+        if (key === 'delete' || key === 'backspace') {
+          e.preventDefault();
+          deleteSelectedLayer();
+          return;
+        }
+      }
+      if (commandKey && !e.shiftKey && key === '0') {
+        e.preventDefault();
+        fitCanvasToView();
+        return;
+      }
+      if (commandKey && !e.shiftKey && key === '1') {
+        e.preventDefault();
+        setCanvasZoom(1, { center: true });
+        return;
+      }
+      if (!selectedElement) return;
+      const node = konvaElements[selectedElement];
+      const meta = layerMeta[selectedElement];
+      if (!node || !meta || meta.locked) return;
+      const step = e.shiftKey ? 10 : 1;
+      let moved = false;
+      switch (e.key) {
+        case 'ArrowLeft':  e.preventDefault(); saveUndo(); node.x(node.x() - step); moved = true; break;
+        case 'ArrowRight': e.preventDefault(); saveUndo(); node.x(node.x() + step); moved = true; break;
+        case 'ArrowUp':    e.preventDefault(); saveUndo(); node.y(node.y() - step); moved = true; break;
+        case 'ArrowDown':  e.preventDefault(); saveUndo(); node.y(node.y() + step); moved = true; break;
+      }
+      if (moved) {
+        layer.draw();
+        updateElementList();
+        updatePropertiesPanel(selectedElement);
+        refreshSelectionIndicator();
+      }
+    });
+  }
+
+  function saveUndo() {
+    if (!templateData || !layer) return;
+    try {
+      const snapshot = buildTemplateSnapshot(true);
+      if (!snapshot) return;
+      undoStack.push(JSON.parse(JSON.stringify(snapshot)));
+    } catch (err) {
+      console.warn('[TemplateStudio] Nao foi possivel salvar historico de desfazer:', err);
+    }
+    if (undoStack.length > 30) undoStack.shift();
+  }
+
+  async function undoLastAction() {
+    const snapshot = undoStack.pop();
+    if (!snapshot) {
+      showStatus('Nada para desfazer.', 'info');
+      return;
+    }
+    try {
+      await restoreEditorSnapshot(snapshot);
+      showStatus('Acao desfeita.', 'success');
+    } catch (err) {
+      console.error('[TemplateStudio] Erro ao desfazer acao:', err);
+      showStatus('Nao foi possivel desfazer esta acao.', 'error');
+    }
+  }
+
+  async function restoreEditorSnapshot(snapshot) {
+    if (!snapshot || !snapshot.layers) throw new Error('Snapshot invalido');
+    selectedElement = null;
+    deselectAllVisuals();
+    if (transformer) {
+      transformer.nodes([]);
+      transformer.visible(false);
+    }
+    Object.keys(konvaElements).forEach(function (k) {
+      if (konvaElements[k] && typeof konvaElements[k].destroy === 'function') konvaElements[k].destroy();
+    });
+    konvaElements = {};
+    layerMeta = {};
+    templateData = normalizeStudioTemplate(JSON.parse(JSON.stringify(snapshot)));
+    await createAllLayers();
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    const articleUrlInput = document.getElementById('articleUrlInput');
+    if (articleUrlInput) articleUrlInput.value = templateData?.articleData?.url || '';
+    const panel = document.getElementById('propertiesPanel');
+    if (panel) panel.innerHTML = '<p style="color:#666;font-size:12px">Selecione um elemento no canvas para editar.</p>';
+  }
+
+  // ============================================================
+  // PERSISTENCIA → JSON
+  // ============================================================
+  function persistMeta(target, key) {
+    const meta = layerMeta[key];
+    if (!meta) return;
+    target.id = meta.id || key;
+    target.type = meta.type;
+    target.label = meta.label;
+    target.zIndex = meta.zIndex;
+    target.visible = meta.visible;
+    target.locked = meta.locked;
+    target.deletable = meta.deletable;
+  }
+
+  function persistBadge(next, target, node) {
+    const bg = node.findOne('.badge-bg');
+    const text = node.findOne('.badge-text');
+    if (!bg || !text) return;
+    const catLabel = formatCategoryLabel(text.text(), { textTransform: node.getAttr('textTransform') });
+    target.text = catLabel;
+    target.width = Math.round(bg.width());
+    target.height = Math.round(bg.height());
+    target.background = bg.fill();
+    target.textColor = text.fill();
+    target.color = text.fill();
+    target.fontFamily = text.fontFamily();
+    target.fontWeight = text.fontStyle() || 'normal';
+    target.fontSize = text.fontSize();
+    target.letterSpacing = text.letterSpacing ? text.letterSpacing() : 0;
+    target.paddingX = Math.round(numOr(node.getAttr('paddingX'), 24));
+    target.paddingY = Math.round(numOr(node.getAttr('paddingY'), 14));
+    target.borderRadius = Math.round(numOr(bg.cornerRadius(), 0));
+    target.radius = target.borderRadius;
+    target.autoWidth = node.getAttr('autoWidth') !== false;
+    target.textTransform = normalizeTextTransform(node.getAttr('textTransform'));
+    target.opacity = node.opacity();
+    if (!next.defaults) next.defaults = {};
+    next.defaults.category = catLabel;
+    if (!next.categoryColors) next.categoryColors = {};
+    next.categoryColors[catLabel] = bg.fill();
+    if (!next.categoryStyles) next.categoryStyles = {};
+    next.categoryStyles[catLabel] = { background: bg.fill(), textColor: text.fill() };
+    const normalized = normalizeCategoryKey(catLabel);
+    if (normalized && normalized !== catLabel) {
+      next.categoryColors[normalized] = bg.fill();
+      next.categoryStyles[normalized] = { background: bg.fill(), textColor: text.fill() };
+    }
+  }
+
+  function persistShapeLine(target, node) {
+    const visible = node.findOne('.separator-visible') || node;
+    target.width = Math.round(visible.width());
+    target.height = Math.round(visible.height());
+    target.color = visible.fill();
+    target.opacity = node.opacity();
+    target.hitHeight = SEPARATOR_HIT_HEIGHT;
+  }
+
+  function persistTextBox(next, target, key, node) {
+    target.text = node.text();
+    target.width = Math.round(node.width());
+    target.maxWidth = Math.round(node.width());
+    target.fontFamily = node.fontFamily();
+    target.fontWeight = node.fontStyle() || 'normal';
+    target.fontSize = node.fontSize();
+    target.lineHeight = Math.round(getTextLineHeightPx(node));
+    target.color = node.fill();
+    target.opacity = node.opacity();
+    if (key === 'title') { if (!next.defaults) next.defaults = {}; next.defaults.title = node.text(); }
+    if (key === 'summary') { if (!next.defaults) next.defaults = {}; next.defaults.summary = node.text(); }
+  }
+
+  function persistOverlay(target, node) {
+    target.width = Math.round(node.width());
+    target.height = Math.round(node.height());
+    target.color = node.fill();
+    target.background = node.fill();
+    target.opacity = node.opacity();
+    if (node.cornerRadius) target.borderRadius = Math.round(numOr(node.cornerRadius(), 0));
+  }
+
+  function persistGradientOverlay(target, node) {
+    target.width = Math.round(node.width());
+    target.height = Math.round(node.height());
+    target.angle = numOr(node.getAttr('angle'), 90);
+    target.colorStops = (node.getAttr('colorStops') || []).map(function (s) {
+      return { offset: clamp01(numOr(s.offset, 0)), color: String(s.color || '#000') };
+    });
+    target.opacity = node.opacity();
+  }
+
+  function persistShape(target, node) {
+    target.width = Math.round(node.width());
+    target.height = Math.round(node.height());
+    target.color = node.fill();
+    target.background = node.fill();
+    target.opacity = node.opacity();
+  }
+
+  function persistImage(target, node) {
+    target.width = Math.round(node.width());
+    target.height = Math.round(node.height());
+    target.opacity = node.opacity();
+    target.fitMode = node.getAttr('fitMode') || target.fitMode || 'cover';
+    target.objectFit = node.getAttr('objectFit') || target.objectFit || target.fitMode || 'cover';
+    target.focalPoint = node.getAttr('focalPoint') || target.focalPoint || { x: 0.5, y: 0.5 };
+    target.focalX = clamp01(numOr(node.getAttr('focalX'), target.focalPoint.x != null ? target.focalPoint.x : 0.5));
+    target.focalY = clamp01(numOr(node.getAttr('focalY'), target.focalPoint.y != null ? target.focalPoint.y : 0.5));
+    target.zoom = Math.max(0.1, numOr(node.getAttr('zoom'), 1));
+    target.panX = numOr(node.getAttr('panX'), 0);
+    target.panY = numOr(node.getAttr('panY'), 0);
+    target.focalPoint = { x: target.focalX, y: target.focalY };
+    const crop = node.crop ? node.crop() : node.getAttr('crop');
+    if (crop && crop.width && crop.height) {
+      target.crop = {
+        x: Math.round(numOr(crop.x, 0)),
+        y: Math.round(numOr(crop.y, 0)),
+        width: Math.round(numOr(crop.width, 0)),
+        height: Math.round(numOr(crop.height, 0))
+      };
+    }
+    const src = node.getAttr('src') || node.getAttr('image') || node.getAttr('url');
+    if (src) target.src = src;
+  }
+
+  function persistLockedImage(target, node) {
+    target.width = Math.round(node.width());
+    target.height = Math.round(node.height());
+    target.opacity = node.opacity();
+    const src = node.getAttr('src') || TEMPLATE_BASE_URL;
+    target.src = src;
+    const shadow = node.getAttr('headerShadow');
+    const outline = node.getAttr('headerOutline');
+    if (shadow) target.shadow = shadow;
+    if (outline) target.outline = outline;
+  }
+
+  function defaultHeaderShadow() {
+    return {
+      color: 'rgba(0,0,0,0.72)',
+      blur: 16,
+      offsetX: 0,
+      offsetY: 7,
+      opacity: 0.52
+    };
+  }
+
+  function defaultHeaderOutline() {
+    return {
+      color: '#000000',
+      width: 0.9,
+      opacity: 0.7
+    };
+  }
+
+  function applyLockedHeaderEffects(node, config, key) {
+    if (key !== 'lockedHeader' || !node) return;
+    const shadow = normalizeHeaderShadow(config.shadow);
+    const outline = normalizeHeaderOutline(config.outline);
+    node.shadowColor(shadow.color);
+    node.shadowBlur(shadow.blur);
+    node.shadowOffset({ x: shadow.offsetX, y: shadow.offsetY });
+    node.shadowOpacity(shadow.opacity);
+    node.setAttr('headerShadow', shadow);
+    node.setAttr('headerOutline', outline);
+  }
+
+  function normalizeHeaderShadow(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const fallback = defaultHeaderShadow();
+    return {
+      color: String(source.color || fallback.color),
+      blur: Math.max(0, numOr(source.blur, fallback.blur)),
+      offsetX: numOr(source.offsetX, fallback.offsetX),
+      offsetY: numOr(source.offsetY, fallback.offsetY),
+      opacity: clamp01(numOr(source.opacity, fallback.opacity))
+    };
+  }
+
+  function normalizeHeaderOutline(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const fallback = defaultHeaderOutline();
+    return {
+      color: String(source.color || fallback.color),
+      width: Math.max(0, numOr(source.width, fallback.width)),
+      opacity: clamp01(numOr(source.opacity, fallback.opacity))
+    };
+  }
+
+  function buildTemplateSnapshot(includeArticleSrc) {
+    if (!templateData) return null;
+    const next = JSON.parse(JSON.stringify(templateData));
+    if (!next.layers) next.layers = {};
+    next.bindings = { ...DEFAULT_BINDINGS, ...(next.bindings || {}) };
+    next.articleData = { ...(templateData.articleData || {}), ...(next.articleData || {}) };
+    next.fonts = {
+      ...(next.fonts || {}),
+      family: DEFAULT_FONT_FAMILY,
+      weights: [400, 700],
+      required: true
+    };
+
+    Object.keys(konvaElements).forEach(function (key) {
+      const node = konvaElements[key];
+      const meta = layerMeta[key];
+      if (!node || !meta) return;
+      if (!next.layers[key]) next.layers[key] = {};
+      const target = next.layers[key];
+      target.x = Math.round(node.x());
+      target.y = Math.round(node.y());
+      if (typeof node.rotation === 'function') target.rotation = numOr(node.rotation(), 0);
+      persistMeta(target, key);
+      if (!target.binding) {
+        if (key === 'category') target.binding = 'article.category';
+        else if (key === 'title') target.binding = 'article.title';
+        else if (key === 'summary') target.binding = 'article.summary';
+        else if (key === 'articleImage') target.binding = 'article.image';
+      }
+      if (meta.type === 'badge') persistBadge(next, target, node);
+      else if (meta.type === 'shapeLine') persistShapeLine(target, node);
+      else if (meta.type === 'textBox') persistTextBox(next, target, key, node);
+      else if (meta.type === 'overlay') persistOverlay(target, node);
+      else if (meta.type === 'gradientOverlay') persistGradientOverlay(target, node);
+      else if (meta.type === 'shape') persistShape(target, node);
+      else if (meta.type === 'image' || meta.type === 'logo') persistImage(target, node);
+      else if (meta.type === 'lockedImage') persistLockedImage(target, node);
+    });
+
+    // Remove camadas que foram apagadas no editor
+    Object.keys(next.layers).forEach(function (key) {
+      if (!konvaElements[key] && !FORCED_NON_DELETABLE.has(key)) {
+        delete next.layers[key];
+      }
+    });
+
+    // Se nao queremos persistir o src da articleImage no JSON salvo
+    // (para nao engessar o template), tiramos o src antes de salvar
+    if (!includeArticleSrc && next.layers.articleImage) {
+      next.layers.articleImage.src = '';
+    }
+    next.layerOrder = Object.keys(next.layers)
+      .sort(function (a, b) {
+        const za = next.layers[a] && typeof next.layers[a].zIndex === 'number' ? next.layers[a].zIndex : 50;
+        const zb = next.layers[b] && typeof next.layers[b].zIndex === 'number' ? next.layers[b].zIndex : 50;
+        return za - zb;
+      });
+    next.bindings = { ...DEFAULT_BINDINGS, ...(next.bindings || {}) };
+    return next;
+  }
+
+  // ============================================================
+  // SALVAR
+  // ============================================================
+  async function saveFromEditor() {
+    if (!templateData) return;
+    const next = buildTemplateSnapshot(false);
+    try {
+      const res = await fetch('/api/template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next)
+      });
+      const result = await res.json().catch(function () { return {}; });
+      if (res.ok) {
+        templateData = normalizeStudioTemplate(result.template || next);
+        notifyTemplateSaved(templateData);
+        showStatus('Template salvo com sucesso!', 'success');
+      } else {
+        showStatus('Erro ao salvar: ' + (result.error || 'falha'), 'error');
+      }
+    } catch (err) {
+      showStatus('Erro de conexao ao salvar.', 'error');
+    }
+  }
+
+  // ============================================================
+  // PREVIEW DO EDITOR (PNG client-side)
+  // ============================================================
+  async function generatePreviewKonva() {
+    const popup = window.open('', '_blank');
+    const indicators = layer.find('.selection-indicator');
+    const visibleIndicators = [];
+    const tWasVisible = transformer && transformer.visible();
+    let dataURL = '';
+    try {
+      const fontsReady = await waitForTemplateFonts();
+      if (!fontsReady) throw new Error('Fonte Aileron nao carregada');
+      indicators.forEach(function (i) {
+        if (i.visible()) visibleIndicators.push(i);
+        i.visible(false);
+      });
+      if (transformer) transformer.visible(false);
+      stage.scale({ x: 1, y: 1 });
+      stage.width(CANVAS_WIDTH);
+      stage.height(CANVAS_HEIGHT);
+      layer.draw();
+      dataURL = stage.toDataURL({ pixelRatio: 1, mimeType: 'image/png' });
+    } catch (err) {
+      if (popup && !popup.closed) popup.close();
+      const message = /Aileron/i.test(err.message || '')
+        ? 'Preview PNG bloqueado: fonte Aileron 400/700 nao carregou. Verifique os arquivos OTF.'
+        : 'Preview PNG bloqueado por imagem remota sem CORS. Use Gerar Preview Real (API) para imagens externas.';
+      showStatus(message, 'error');
+      return;
+    } finally {
+      applyStageScale();
+      visibleIndicators.forEach(function (i) { i.visible(true); });
+      if (transformer && tWasVisible) transformer.visible(true);
+      layer.draw();
+    }
+    if (popup) {
+      popup.document.write('<title>Preview do Editor</title><body style="margin:0;background:#0a0a1a;display:flex;justify-content:center;align-items:center;min-height:100vh"><img src="' + dataURL + '" style="max-width:100%;max-height:100vh"></body>');
+      popup.document.close();
+      showStatus('Preview PNG do editor gerado.', 'success');
+    } else {
+      showStatus('Preview PNG gerado, mas o bloqueador de pop-up impediu abrir a nova aba.', 'error');
+    }
+  }
+
+  function notifyTemplateSaved(template) {
+    const payload = {
+      type: 'autopost:template-saved',
+      at: Date.now(),
+      templateHash: template && template.id ? template.id : 'ururau-reels'
+    };
+    try { localStorage.setItem('autopost:template-saved', JSON.stringify(payload)); } catch (e) { /* ignore */ }
+    try { if (window.parent && window.parent !== window) window.parent.postMessage(payload, window.location.origin); } catch (e) { /* ignore */ }
+    try { if (window.opener && !window.opener.closed) window.opener.postMessage(payload, window.location.origin); } catch (e) { /* ignore */ }
+  }
+
+  // ============================================================
+  // PREVIEW REAL (server-side)
+  // ============================================================
+  async function generatePreviewReal() {
+    showStatus('Gerando preview real...', 'info');
+    const popup = window.open('', '_blank');
+    try {
+      await waitForTemplateFonts();
+      const previewTemplate = buildTemplateSnapshot(true);
+      const articleSrc = previewTemplate?.layers?.articleImage?.src || '';
+      const res = await fetch('/api/template/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: konvaElements.title ? konvaElements.title.text() : DEFAULT_PREVIEW.title,
+          summary: konvaElements.summary ? konvaElements.summary.text() : DEFAULT_PREVIEW.summary,
+          category: konvaElements.category && konvaElements.category.findOne('.badge-text')
+            ? konvaElements.category.findOne('.badge-text').text()
+            : DEFAULT_PREVIEW.category,
+          imageUrl: articleSrc,
+          author: previewTemplate.articleData?.author || '',
+          date: previewTemplate.articleData?.date || '',
+          template: previewTemplate
+        })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      const url = normalizePreviewUrl(data);
+      if (!res.ok || !url) {
+        if (popup && !popup.closed) popup.close();
+        showStatus('Falha no preview: ' + (data.error || 'erro desconhecido'), 'error');
+        return;
+      }
+      if (popup) {
+        popup.document.write('<title>Preview Real (API)</title><body style="margin:0;background:#0a0a1a;display:flex;justify-content:center;align-items:center;min-height:100vh"><img src="' + escapeAttr(url) + '" style="max-width:100%;max-height:100vh"></body>');
+        popup.document.close();
+        showStatus('Preview real gerado.', 'success');
+      } else {
+        showStatusLink('Preview real gerado, mas o pop-up foi bloqueado.', url, 'success');
+      }
+    } catch (err) {
+      if (popup && !popup.closed) popup.close();
+      showStatus('Erro ao gerar preview real: ' + (err.message || 'falha de conexao'), 'error');
+    }
+  }
+
+  function normalizePreviewUrl(data) {
+    if (data && data.url) return data.url;
+    if (data && data.mediaPath) return '/api/media?path=' + encodeURIComponent(data.mediaPath);
+    if (data && data.path) return '/api/media?path=' + encodeURIComponent(data.path);
+    return '';
+  }
+
+  function escapeAttr(value) {
+    return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  // ============================================================
+  // RESET
+  // ============================================================
+  async function resetPositions() {
+    if (!confirm('Restaurar template para o padrao? Suas alteracoes nao salvas serao perdidas.')) return;
+    try {
+      const res = await fetch('/api/template/reset', { method: 'POST' });
+      const result = await res.json().catch(function () { return {}; });
+      if (res.ok && result.template) {
+        templateData = result.template;
+        // Destroi tudo e recria
+        Object.keys(konvaElements).forEach(function (k) { konvaElements[k].destroy(); });
+        konvaElements = {};
+        layerMeta = {};
+        deselectAllVisuals();
+        await createAllLayers();
+        applyZIndexOrder();
+        layer.draw();
+        updateElementList();
+        deselectAll();
+        showStatus('Template restaurado.', 'success');
+      } else {
+        showStatus('Erro ao restaurar.', 'error');
+      }
+    } catch (err) {
+      showStatus('Erro de conexao ao restaurar.', 'error');
+    }
+  }
+
+  function bindToolbarButtons() {
+    setupSidebarTabs();
+    const articleUrlInput = document.getElementById('articleUrlInput');
+    if (articleUrlInput) {
+      const savedUrl = templateData?.articleData?.url || '';
+      if (savedUrl && !articleUrlInput.value) articleUrlInput.value = savedUrl;
+      articleUrlInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          scrapeArticleFromEditor();
+        }
+      });
+    }
+    const btnScrapeArticle = document.getElementById('btnScrapeArticle');
+    if (btnScrapeArticle) btnScrapeArticle.addEventListener('click', scrapeArticleFromEditor);
+    const btnSave = document.getElementById('btnSave');
+    if (btnSave) btnSave.addEventListener('click', saveFromEditor);
+    const btnPreviewKonva = document.getElementById('btnPreviewKonva');
+    if (btnPreviewKonva) btnPreviewKonva.addEventListener('click', generatePreviewKonva);
+    const btnPreviewReal = document.getElementById('btnPreviewReal');
+    if (btnPreviewReal) btnPreviewReal.addEventListener('click', generatePreviewReal);
+    const btnReset = document.getElementById('btnReset');
+    if (btnReset) btnReset.addEventListener('click', resetPositions);
+    const btnUploadImage = document.getElementById('btnUploadImage');
+    const imageUploadInput = document.getElementById('imageUploadInput');
+    if (btnUploadImage && imageUploadInput) {
+      btnUploadImage.addEventListener('click', function () { imageUploadInput.click(); });
+      imageUploadInput.addEventListener('change', handleImageUpload);
+    }
+    const btnAddText = document.getElementById('btnAddText');
+    if (btnAddText) btnAddText.addEventListener('click', function () { addTextLayer(); });
+    const btnAddImage = document.getElementById('btnAddImage');
+    if (btnAddImage) btnAddImage.addEventListener('click', addImageLayerByUrl);
+    const btnAddGradient = document.getElementById('btnAddGradient');
+    if (btnAddGradient) btnAddGradient.addEventListener('click', addGradientLayer);
+    const btnAddLine = document.getElementById('btnAddLine');
+    if (btnAddLine) btnAddLine.addEventListener('click', addLineLayer);
+    const btnUndo = document.getElementById('btnUndo');
+    if (btnUndo) btnUndo.addEventListener('click', undoLastAction);
+    const btnCopySelected = document.getElementById('btnCopySelected');
+    if (btnCopySelected) btnCopySelected.addEventListener('click', copySelectedLayer);
+    const btnPasteSelected = document.getElementById('btnPasteSelected');
+    if (btnPasteSelected) btnPasteSelected.addEventListener('click', pasteCopiedLayer);
+    const btnDuplicateSelected = document.getElementById('btnDuplicateSelected');
+    if (btnDuplicateSelected) btnDuplicateSelected.addEventListener('click', duplicateSelectedLayer);
+    const btnDeleteSelected = document.getElementById('btnDeleteSelected');
+    if (btnDeleteSelected) btnDeleteSelected.addEventListener('click', deleteSelectedLayer);
+    const btnReplaceImage = document.getElementById('btnReplaceImage');
+    if (btnReplaceImage) btnReplaceImage.addEventListener('click', replaceArticleImageFromUpload);
+    const btnCenterSelectedImage = document.getElementById('btnCenterSelectedImage');
+    if (btnCenterSelectedImage) btnCenterSelectedImage.addEventListener('click', centerSelectedImageCrop);
+    const btnResetSelectedCrop = document.getElementById('btnResetSelectedCrop');
+    if (btnResetSelectedCrop) btnResetSelectedCrop.addEventListener('click', resetSelectedImageCrop);
+    const contextDuplicate = document.getElementById('contextDuplicate');
+    if (contextDuplicate) contextDuplicate.addEventListener('click', duplicateSelectedLayer);
+    const contextLock = document.getElementById('contextLock');
+    if (contextLock) contextLock.addEventListener('click', function () { if (selectedElement) toggleLocked(selectedElement); });
+    const contextDelete = document.getElementById('contextDelete');
+    if (contextDelete) contextDelete.addEventListener('click', deleteSelectedLayer);
+    const contextBack = document.getElementById('contextBack');
+    if (contextBack) contextBack.addEventListener('click', function () { if (selectedElement) moveLayerToBack(selectedElement); });
+    const contextFront = document.getElementById('contextFront');
+    if (contextFront) contextFront.addEventListener('click', function () { if (selectedElement) moveLayerToFront(selectedElement); });
+    const floatDuplicate = document.getElementById('floatDuplicate');
+    if (floatDuplicate) floatDuplicate.addEventListener('click', duplicateSelectedLayer);
+    const floatLock = document.getElementById('floatLock');
+    if (floatLock) floatLock.addEventListener('click', function () { if (selectedElement) toggleLocked(selectedElement); });
+    const floatFront = document.getElementById('floatFront');
+    if (floatFront) floatFront.addEventListener('click', function () { if (selectedElement) moveLayerToFront(selectedElement); });
+    const floatDelete = document.getElementById('floatDelete');
+    if (floatDelete) floatDelete.addEventListener('click', deleteSelectedLayer);
+    const timelinePlay = document.getElementById('timelinePlay');
+    if (timelinePlay) timelinePlay.addEventListener('click', generatePreviewKonva);
+    const timelineToggle = document.getElementById('timelineToggle');
+    if (timelineToggle) timelineToggle.addEventListener('click', toggleTimelinePanel);
+    const btnFitCanvas = document.getElementById('btnFitCanvas');
+    if (btnFitCanvas) btnFitCanvas.addEventListener('click', fitCanvasToView);
+    const btnCenterCanvas = document.getElementById('btnCenterCanvas');
+    if (btnCenterCanvas) btnCenterCanvas.addEventListener('click', centerCanvasInView);
+    const btnZoom50 = document.getElementById('btnZoom50');
+    if (btnZoom50) btnZoom50.addEventListener('click', function () { setCanvasZoom(0.5, { center: true }); });
+    const btnZoom75 = document.getElementById('btnZoom75');
+    if (btnZoom75) btnZoom75.addEventListener('click', function () { setCanvasZoom(0.75, { center: true }); });
+    const btnZoom100 = document.getElementById('btnZoom100');
+    if (btnZoom100) btnZoom100.addEventListener('click', function () { setCanvasZoom(1, { center: true }); });
+    const btnToggleLayers = document.getElementById('btnToggleLayers');
+    if (btnToggleLayers) btnToggleLayers.addEventListener('click', function () { toggleWorkspacePanel('layers'); });
+    const btnToggleProperties = document.getElementById('btnToggleProperties');
+    if (btnToggleProperties) btnToggleProperties.addEventListener('click', function () { toggleWorkspacePanel('properties'); });
+    const btnFocusStudio = document.getElementById('btnFocusStudio');
+    if (btnFocusStudio) btnFocusStudio.addEventListener('click', toggleFocusMode);
+    const btnShortcutHelp = document.getElementById('btnShortcutHelp');
+    if (btnShortcutHelp) btnShortcutHelp.addEventListener('click', function () { setShortcutHelp(true); });
+    const btnCloseShortcuts = document.getElementById('btnCloseShortcuts');
+    if (btnCloseShortcuts) btnCloseShortcuts.addEventListener('click', function () { setShortcutHelp(false); });
+    const shortcutModal = document.getElementById('shortcutModal');
+    if (shortcutModal) {
+      shortcutModal.addEventListener('click', function (event) {
+        if (event.target === shortcutModal) setShortcutHelp(false);
+      });
+    }
+    const alignButtons = {
+      btnAlignLeft: 'left',
+      btnAlignCenterH: 'centerH',
+      btnAlignRight: 'right',
+      btnAlignTop: 'top',
+      btnAlignCenterV: 'centerV',
+      btnAlignBottom: 'bottom'
+    };
+    Object.keys(alignButtons).forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.addEventListener('click', function () { alignSelectedLayer(alignButtons[id]); });
+    });
+    const opacityButtons = {
+      btnOpacity100: 1,
+      btnOpacity75: 0.75,
+      btnOpacity50: 0.5
+    };
+    Object.keys(opacityButtons).forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.addEventListener('click', function () { setSelectedOpacity(opacityButtons[id]); });
+    });
+    updateWorkspaceViewButtons();
+    const btnPanelAddText = document.getElementById('btnPanelAddText');
+    if (btnPanelAddText) btnPanelAddText.addEventListener('click', function () { addTextLayer(); });
+    const btnPanelAddImage = document.getElementById('btnPanelAddImage');
+    if (btnPanelAddImage) btnPanelAddImage.addEventListener('click', addImageLayerByUrl);
+    const btnPanelAddGradient = document.getElementById('btnPanelAddGradient');
+    if (btnPanelAddGradient) btnPanelAddGradient.addEventListener('click', addGradientLayer);
+    const btnPanelAddLine = document.getElementById('btnPanelAddLine');
+    if (btnPanelAddLine) btnPanelAddLine.addEventListener('click', addLineLayer);
+    const btnPanelUploadReplace = document.getElementById('btnPanelUploadReplace');
+    if (btnPanelUploadReplace) btnPanelUploadReplace.addEventListener('click', function () {
+      const uploadMode = document.getElementById('uploadMode');
+      const input = document.getElementById('imageUploadInput');
+      if (uploadMode) uploadMode.value = 'replace';
+      if (input) input.click();
+    });
+    const btnPanelUploadLayer = document.getElementById('btnPanelUploadLayer');
+    if (btnPanelUploadLayer) btnPanelUploadLayer.addEventListener('click', function () {
+      const uploadMode = document.getElementById('uploadMode');
+      const input = document.getElementById('imageUploadInput');
+      if (uploadMode) uploadMode.value = 'layer';
+      if (input) input.click();
+    });
+    const btnPanelImageUrl = document.getElementById('btnPanelImageUrl');
+    if (btnPanelImageUrl) btnPanelImageUrl.addEventListener('click', addImageLayerByUrl);
+    const btnAnalyzeCanvaLink = document.getElementById('btnAnalyzeCanvaLink');
+    if (btnAnalyzeCanvaLink) btnAnalyzeCanvaLink.addEventListener('click', function () { analyzeCanvaTemplateLink(); });
+    const btnCanvaSnapshotExample = document.getElementById('btnCanvaSnapshotExample');
+    if (btnCanvaSnapshotExample) btnCanvaSnapshotExample.addEventListener('click', fillCanvaSnapshotExample);
+    const btnValidateCanvaSnapshot = document.getElementById('btnValidateCanvaSnapshot');
+    if (btnValidateCanvaSnapshot) btnValidateCanvaSnapshot.addEventListener('click', function () { importCanvaBridgeSnapshot(true); });
+    const btnImportCanvaSnapshot = document.getElementById('btnImportCanvaSnapshot');
+    if (btnImportCanvaSnapshot) btnImportCanvaSnapshot.addEventListener('click', function () { importCanvaBridgeSnapshot(false); });
+    const canvaTemplateUrlInput = document.getElementById('canvaTemplateUrlInput');
+    if (canvaTemplateUrlInput) {
+      const savedCanvaUrl = templateData?.integrations?.canva?.sourceUrl || '';
+      if (savedCanvaUrl && !canvaTemplateUrlInput.value) canvaTemplateUrlInput.value = savedCanvaUrl;
+      canvaTemplateUrlInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          analyzeCanvaTemplateLink();
+        }
+      });
+    }
+    const btnPanelTitlePreset = document.getElementById('btnPanelTitlePreset');
+    if (btnPanelTitlePreset) btnPanelTitlePreset.addEventListener('click', function () { addTextPreset('title'); });
+    const btnPanelBodyPreset = document.getElementById('btnPanelBodyPreset');
+    if (btnPanelBodyPreset) btnPanelBodyPreset.addEventListener('click', function () { addTextPreset('body'); });
+    const btnPanelAddTextAgain = document.getElementById('btnPanelAddTextAgain');
+    if (btnPanelAddTextAgain) btnPanelAddTextAgain.addEventListener('click', function () { addTextLayer(); });
+  }
+
+  function setupSidebarTabs() {
+    const tabs = Array.prototype.slice.call(document.querySelectorAll('[data-sidebar-tab]'));
+    const views = Array.prototype.slice.call(document.querySelectorAll('[data-sidebar-view]'));
+    if (!tabs.length || !views.length) return;
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        const target = tab.getAttribute('data-sidebar-tab');
+        tabs.forEach(function (item) { item.classList.toggle('active', item === tab); });
+        views.forEach(function (view) {
+          view.classList.toggle('active', view.getAttribute('data-sidebar-view') === target);
+        });
+      });
+    });
+  }
+
+  function toggleTimelinePanel() {
+    const canvasArea = document.querySelector('.canvas-area');
+    if (!canvasArea) return;
+    canvasArea.classList.toggle('timeline-collapsed');
+    window.requestAnimationFrame(function () {
+      centerCanvasInView();
+    });
+  }
+
+  function applyStageScale() {
+    if (!stage || !layer) return;
+    stage.scale({ x: currentScale, y: currentScale });
+    stage.width(CANVAS_WIDTH * currentScale);
+    stage.height(CANVAS_HEIGHT * currentScale);
+    updateZoomUi();
+    layer.batchDraw();
+  }
+
+  function setCanvasZoom(value, options) {
+    const next = Math.max(0.25, Math.min(1, numOr(value, currentScale)));
+    currentScale = next;
+    applyStageScale();
+    if (options && options.center) centerCanvasInView();
+  }
+
+  function updateZoomUi() {
+    const scaleSlider = document.getElementById('scaleSlider');
+    const scaleValue = document.getElementById('scaleValue');
+    if (scaleSlider && Math.abs(parseFloat(scaleSlider.value) - currentScale) > 0.001) {
+      scaleSlider.value = String(currentScale);
+    }
+    if (scaleValue) scaleValue.textContent = Math.round(currentScale * 100) + '%';
+  }
+
+  function fitCanvasToView() {
+    const scroll = document.querySelector('.canvas-scroll');
+    if (!scroll) return;
+    const availableW = Math.max(260, scroll.clientWidth - 80);
+    const availableH = Math.max(360, scroll.clientHeight - 80);
+    const next = Math.min(1, Math.max(0.25, Math.min(availableW / CANVAS_WIDTH, availableH / CANVAS_HEIGHT)));
+    setCanvasZoom(next, { center: true });
+  }
+
+  function centerCanvasInView() {
+    const scroll = document.querySelector('.canvas-scroll');
+    if (!scroll) return;
+    window.requestAnimationFrame(function () {
+      scroll.scrollLeft = Math.max(0, (scroll.scrollWidth - scroll.clientWidth) / 2);
+      scroll.scrollTop = Math.max(0, (scroll.scrollHeight - scroll.clientHeight) / 2);
+    });
+  }
+
+  // ============================================================
+  // FONTES
+  // ============================================================
+  async function waitForTemplateFonts() {
+    if (!document.fonts || typeof document.fonts.load !== 'function') {
+      setAileronFontCheckAttrs(false, false);
+      showStatus('Nao foi possivel validar a fonte Aileron neste navegador.', 'error');
+      return false;
+    }
+    const missing = [];
+    await Promise.all(REQUIRED_AILERON_FONT_QUERIES.map(async function (q) {
+      try {
+        await document.fonts.load(q);
+        if (!document.fonts.check(q)) missing.push(q);
+      } catch (err) { missing.push(q); }
+    }));
+    try { await document.fonts.ready; } catch (e) { /* best-effort */ }
+    const regularOk = document.fonts.check('400 24px Aileron');
+    const boldOk = document.fonts.check('700 24px Aileron');
+    setAileronFontCheckAttrs(regularOk, boldOk);
+    if (!regularOk || !boldOk) {
+      showStatus('Fonte Aileron nao carregada nos pesos 400/700. Verifique os arquivos OTF.', 'error');
+      return false;
+    }
+    if (missing.length) {
+      showStatus('Fonte Aileron nao carregada nos pesos 400/700. Verifique os arquivos OTF.', 'error');
+      return false;
+    }
+    return true;
+  }
+
+  function setAileronFontCheckAttrs(regularOk, boldOk) {
+    if (!document.body) return;
+    document.body.dataset.aileron400 = String(!!regularOk);
+    document.body.dataset.aileron700 = String(!!boldOk);
+  }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+  function normalizeFontFamily(value) {
+    const family = String(value || DEFAULT_FONT_FAMILY).split(',')[0].trim();
+    if (!family) return DEFAULT_FONT_FAMILY;
+    if (/^Aileron(Regular|Bold)?$/i.test(family)) return DEFAULT_FONT_FAMILY;
+    if (/^(Arial|Helvetica|sans-serif)$/i.test(family)) return DEFAULT_FONT_FAMILY;
+    return family;
+  }
+  function normalizeFontWeight(value, fallback) {
+    const w = String(value || fallback || 'normal').trim().toLowerCase();
+    if (w === '700') return 'bold';
+    if (w === '400') return 'normal';
+    if (w === 'bold' || w === 'normal') return w;
+    return w || fallback || 'normal';
+  }
+  function getKonvaLineHeight(config) {
+    const fs = numOr(config?.fontSize, 16);
+    const lh = numOr(config?.lineHeight, fs * 1.2);
+    return lh / fs;
+  }
+  function getTextLineHeightPx(node) {
+    return Math.round((node.lineHeight ? node.lineHeight() : 1.2) * node.fontSize());
+  }
+  function sectionHtml(title, body) {
+    return '<div class="tool-section"><div class="tool-section-title">' +
+      escapeHtmlText(title) +
+      '</div><div class="tool-section-body">' +
+      (body || '') +
+      '</div></div>';
+  }
+  function visualLayerType(type) {
+    if (type === 'textBox') return 'Texto';
+    if (type === 'image') return 'Imagem';
+    if (type === 'lockedImage') return 'Header';
+    if (type === 'gradientOverlay') return 'Gradiente';
+    if (type === 'badge') return 'Badge';
+    if (type === 'shapeLine') return 'Linha';
+    if (type === 'shape') return 'Fundo';
+    if (type === 'overlay') return 'Forma';
+    if (type === 'logo') return 'Logo';
+    return 'Camada';
+  }
+  function numberControl(key, prop, label, value) {
+    return '<div class="tool-group"><label>' + label + '</label><input type="number" value="' +
+      escapeHtmlAttr(Number.isFinite(value) ? value : 0) +
+      '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+  function textControl(key, prop, label, value) {
+    return '<div class="tool-group"><label>' + label + '</label><input type="text" value="' +
+      escapeHtmlAttr(value) +
+      '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+  function textareaControl(key, prop, label, value) {
+    return '<div class="tool-group"><label>' + label + '</label><textarea onchange="updateNodePropFromInput(\'' +
+      key + '\', \'' + prop + '\', this.value)">' +
+      escapeHtmlText(value) +
+      '</textarea></div>';
+  }
+  function colorControl(key, prop, label, value) {
+    return '<div class="tool-group"><label>' + label + '</label><input type="color" value="' +
+      colorToHex(value) +
+      '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+  function rangeControl(key, prop, label, value) {
+    const safe = clamp01(numOr(value, 1));
+    return '<div class="tool-group"><label>' + label + ' (' + safe.toFixed(2) + ')</label><input type="range" min="0" max="1" step="0.05" value="' +
+      safe +
+      '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+  function checkboxControl(key, prop, label, checked) {
+    return '<div class="tool-group"><label>' + label + '</label><input type="checkbox" ' +
+      (checked ? 'checked ' : '') +
+      'onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.checked)"></div>';
+  }
+  function selectControl(key, prop, label, value, options) {
+    let h = '<div class="tool-group"><label>' + label + '</label><select onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">';
+    options.forEach(function (o) {
+      h += '<option value="' + escapeHtmlAttr(o) + '"' + (String(o) === String(value) ? ' selected' : '') + '>' + escapeHtmlText(o) + '</option>';
+    });
+    return h + '</select></div>';
+  }
+  function getCategoryColor(label, colors) {
+    const c = colors || {};
+    const exact = formatCategoryLabel(label, (templateData.layers || {}).category);
+    const normalized = normalizeCategoryKey(exact);
+    return c[exact] || c[normalized] || c.GERAL || FALLBACK_CATEGORY_COLORS[normalized] || URURAU_OFFICIAL_RED;
+  }
+
+  // Resolve um par {background, textColor} a partir de templateData.categoryStyles.
+  // Cai pra categoryColors legacy se categoryStyles nao tiver a chave.
+  function resolveCategoryStyle(label) {
+    const cat = formatCategoryLabel(label, (templateData.layers || {}).category);
+    const normalized = normalizeCategoryKey(cat);
+    const styles = templateData.categoryStyles || {};
+    const colors = templateData.categoryColors || FALLBACK_CATEGORY_COLORS;
+    const style = styles[cat] || styles[normalized] || styles.GERAL;
+    if (style && (style.background || style.textColor)) {
+      return {
+        background: style.background || colors[cat] || colors[normalized] || URURAU_OFFICIAL_RED,
+        textColor: style.textColor || '#FFFFFF'
+      };
+    }
+    return { background: getCategoryColor(cat, colors), textColor: '#FFFFFF' };
+  }
+  function formatCategoryLabel(value, layerConfig) {
+    const text = String(value == null ? '' : value).trim() || DEFAULT_PREVIEW.category;
+    const t = normalizeTextTransform(layerConfig?.textTransform);
+    if (t === 'uppercase') return text.toUpperCase();
+    if (t === 'lowercase') return text.toLowerCase();
+    if (t === 'capitalize') return text.toLowerCase().replace(/(^|\s)(\S)/g, function (_, l, c) { return l + c.toUpperCase(); });
+    return text;
+  }
+  function normalizeTextTransform(value) {
+    const t = String(value || 'uppercase').trim().toLowerCase();
+    if (t === 'none' || t === 'lowercase' || t === 'capitalize') return t;
+    return 'uppercase';
+  }
+  function normalizeCategoryKey(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  }
+  function calculateBadgeWidth(label, fontSize, paddingX, letterSpacing) {
+    const approx = String(label || '').length * Math.max(12, fontSize * 0.62);
+    const tracking = Math.max(0, String(label || '').length - 1) * numOr(letterSpacing, 0);
+    return Math.max(MIN_BADGE_WIDTH, Math.ceil(approx + tracking + paddingX * 2));
+  }
+  function measureBadgeTextWidth(textNode) {
+    if (!textNode) return 0;
+    const text = textNode.text ? textNode.text() : '';
+    const ls = textNode.letterSpacing ? textNode.letterSpacing() : 0;
+    const tracking = Math.max(0, String(text || '').length - 1) * numOr(ls, 0);
+    if (typeof textNode.getTextWidth === 'function') return textNode.getTextWidth() + tracking;
+    return textNode.width() + tracking;
+  }
+  function resizeBadgeToText(group) {
+    if (!group) return;
+    const bg = group.findOne('.badge-bg');
+    const hit = group.findOne('.badge-hit');
+    const text = group.findOne('.badge-text');
+    if (!bg || !text) return;
+    const padX = numOr(group.getAttr('paddingX'), text.x() || 24);
+    const height = bg.height() || Math.max(1, text.fontSize() + numOr(group.getAttr('paddingY'), 14) * 2);
+    const width = group.getAttr('autoWidth') === false ? bg.width()
+      : Math.max(MIN_BADGE_WIDTH, Math.ceil(measureBadgeTextWidth(text) + padX * 2));
+    setBadgeWidth(group, width);
+    bg.height(height);
+    text.x(padX);
+    text.y((height - text.fontSize()) / 2 + 2);
+    if (hit) hit.height(height);
+    group.height(height);
+  }
+  function setBadgeWidth(group, width) {
+    const bg = group.findOne('.badge-bg');
+    const hit = group.findOne('.badge-hit');
+    if (bg) bg.width(width);
+    if (hit) hit.width(width);
+    group.width(width);
+  }
+  function setBadgeHeight(group, height) {
+    const bg = group.findOne('.badge-bg');
+    const hit = group.findOne('.badge-hit');
+    const text = group.findOne('.badge-text');
+    if (bg) bg.height(height);
+    if (hit) hit.height(height);
+    if (text) text.y((height - text.fontSize()) / 2 + 2);
+    group.height(height);
+  }
+  function updateSeparatorHitArea(group) {
+    if (!group) return;
+    const visible = group.findOne('.separator-visible');
+    const hit = group.findOne('.separator-hit');
+    if (!visible || !hit) return;
+    const vh = visible.height();
+    const hh = Math.max(SEPARATOR_HIT_HEIGHT, vh);
+    hit.y(-Math.round((hh - vh) / 2));
+    hit.height(hh);
+    hit.width(visible.width());
+    group.width(visible.width());
+    group.height(hh);
+  }
+  function numOr(value, fallback) {
+    const p = parseFloat(value);
+    return Number.isFinite(p) ? p : fallback;
+  }
+  function clamp01(v) { return Math.min(1, Math.max(0, v)); }
+  function escapeHtmlAttr(v) {
+    return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escapeHtmlText(v) {
+    return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function colorToHex(c) {
+    if (typeof c !== 'string') return '#ffffff';
+    if (c.charAt(0) === '#') {
+      if (c.length === 4) return '#' + c.charAt(1) + c.charAt(1) + c.charAt(2) + c.charAt(2) + c.charAt(3) + c.charAt(3);
+      return c;
+    }
+    return '#ffffff';
+  }
+  function isHexColor(c) {
+    return typeof c === 'string' && /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(c);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEditor);
+  } else {
+    initEditor();
+  }
+})();
