@@ -29,7 +29,7 @@
   let layerMeta = {};            // key -> { id, type, zIndex, visible, locked, deletable, label }
   let selectedElement = null;
   let undoStack = [];
-  let currentScale = 0.45;
+  let currentScale = 0.5;
   let transformer = null;        // Konva.Transformer global, anexado ao layer
 
   const CANVAS_WIDTH = 1080;
@@ -994,6 +994,30 @@
     deleteLayer(selectedElement);
   }
 
+  function selectedImageKey() {
+    if (selectedElement && layerMeta[selectedElement] && (layerMeta[selectedElement].type === 'image' || layerMeta[selectedElement].type === 'logo')) return selectedElement;
+    return 'articleImage';
+  }
+
+  function centerSelectedImageCrop() {
+    const key = selectedImageKey();
+    if (!konvaElements[key]) { showStatus('Selecione uma imagem para centralizar.', 'info'); return; }
+    window.centerImageCrop(key);
+  }
+
+  function resetSelectedImageCrop() {
+    const key = selectedImageKey();
+    if (!konvaElements[key]) { showStatus('Selecione uma imagem para resetar o recorte.', 'info'); return; }
+    window.resetImageCrop(key);
+  }
+
+  function replaceArticleImageFromUpload() {
+    const uploadMode = document.getElementById('uploadMode');
+    const input = document.getElementById('imageUploadInput');
+    if (uploadMode) uploadMode.value = 'replace';
+    if (input) input.click();
+  }
+
   function setImageSourceForKey(key, src) {
     if (!key || !src || !templateData.layers[key] || !layerMeta[key]) return;
     saveUndo();
@@ -1288,26 +1312,34 @@
     let html = '';
     ordered.forEach(function (key) {
       const meta = layerMeta[key];
-      const node = konvaElements[key];
       const active = selectedElement === key ? 'active' : '';
       const dim = meta.visible ? '' : ' dim';
-      const lockIcon = meta.locked ? 'Lock' : 'Free';
-      const visIcon = meta.visible ? 'On' : 'Off';
-      const pos = 'X' + Math.round(node.x()) + ' Y' + Math.round(node.y()) + ' z' + meta.zIndex;
+      const lockLabel = meta.locked ? 'Bloqueada' : 'Livre';
+      const visLabel = meta.visible ? 'Visivel' : 'Oculta';
+      const typeLabel = visualLayerType(meta.type);
       html += '<div class="element-item ' + active + dim + (meta.locked ? ' locked' : '') + '" onclick="selectElementFromList(\'' + key + '\')">' +
-        '<div class="el-row">' +
+        '<div class="element-main">' +
           '<span class="el-name">' + escapeHtmlText(meta.label) + '</span>' +
-          '<span class="el-meta">' + escapeHtmlText(meta.type) + '<br>' + pos + '</span>' +
+          '<span class="el-meta">' +
+            '<span class="el-pill">' + escapeHtmlText(typeLabel) + '</span>' +
+            '<span class="el-pill">' + visLabel + '</span>' +
+            '<span class="el-pill">' + lockLabel + '</span>' +
+          '</span>' +
         '</div>' +
-        '<div class="el-actions" onclick="event.stopPropagation()">' +
-          '<button title="Subir camada" onclick="window.layerCmd(\'up\', \'' + key + '\')">Up</button>' +
-          '<button title="Descer camada" onclick="window.layerCmd(\'down\', \'' + key + '\')">Dn</button>' +
-          '<button title="Trazer para frente" onclick="window.layerCmd(\'front\', \'' + key + '\')">Top</button>' +
-          '<button title="Enviar para tras" onclick="window.layerCmd(\'back\', \'' + key + '\')">Bot</button>' +
-          '<button title="Mostrar/Ocultar" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + visIcon + '</button>' +
-          '<button title="Bloquear/Desbloquear" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + lockIcon + '</button>' +
-          '<button title="Duplicar" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')">Copy</button>' +
-          (meta.deletable ? '<button title="Apagar" onclick="window.layerCmd(\'delete\', \'' + key + '\')">Del</button>' : '') +
+        '<div class="element-quick" onclick="event.stopPropagation()">' +
+          '<button class="layer-icon-btn" title="Mostrar/Ocultar camada" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + (meta.visible ? 'Ver' : 'Oc') + '</button>' +
+          '<button class="layer-icon-btn" title="Bloquear/Desbloquear camada" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + (meta.locked ? 'Lock' : 'Free') + '</button>' +
+          '<details class="element-actions-menu">' +
+            '<summary title="Mais acoes da camada">...</summary>' +
+            '<div class="layer-menu">' +
+              '<button title="Subir camada" onclick="window.layerCmd(\'up\', \'' + key + '\')">Subir</button>' +
+              '<button title="Descer camada" onclick="window.layerCmd(\'down\', \'' + key + '\')">Descer</button>' +
+              '<button title="Trazer para frente" onclick="window.layerCmd(\'front\', \'' + key + '\')">Trazer para frente</button>' +
+              '<button title="Enviar para tras" onclick="window.layerCmd(\'back\', \'' + key + '\')">Enviar para tras</button>' +
+              '<button title="Duplicar camada" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')">Duplicar</button>' +
+              (meta.deletable ? '<button title="Apagar camada" onclick="window.layerCmd(\'delete\', \'' + key + '\')">Apagar</button>' : '') +
+            '</div>' +
+          '</details>' +
         '</div>' +
       '</div>';
     });
@@ -1389,11 +1421,11 @@
   }
 
   function renderTextBoxControls(key, node) {
-    return textControl(key, 'text', 'Texto', node.text()) +
+    return textareaControl(key, 'text', 'Texto', node.text()) +
       '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(node.width())) + numberControl(key, 'fontSize', 'Fonte (px)', node.fontSize()) + '</div>' +
       '<div class="tool-row">' + numberControl(key, 'lineHeightPx', 'Linha (px)', getTextLineHeightPx(node)) + colorControl(key, 'color', 'Cor', node.fill()) + '</div>' +
-      textControl(key, 'fontFamily', 'Fonte', node.fontFamily()) +
-      '<div class="tool-row">' + selectControl(key, 'fontWeight', 'Peso', node.fontStyle() || 'normal', ['normal', 'bold', '400', '700']) + rangeControl(key, 'opacity', 'Opacidade', node.opacity()) + '</div>';
+      '<div class="tool-row">' + textControl(key, 'fontFamily', 'Fonte', node.fontFamily()) + selectControl(key, 'fontWeight', 'Peso', node.fontStyle() || 'normal', ['normal', 'bold', '400', '700']) + '</div>' +
+      rangeControl(key, 'opacity', 'Opacidade', node.opacity());
   }
 
   function renderOverlayControls(key, node) {
@@ -2425,6 +2457,12 @@
     if (btnDuplicateSelected) btnDuplicateSelected.addEventListener('click', duplicateSelectedLayer);
     const btnDeleteSelected = document.getElementById('btnDeleteSelected');
     if (btnDeleteSelected) btnDeleteSelected.addEventListener('click', deleteSelectedLayer);
+    const btnReplaceImage = document.getElementById('btnReplaceImage');
+    if (btnReplaceImage) btnReplaceImage.addEventListener('click', replaceArticleImageFromUpload);
+    const btnCenterSelectedImage = document.getElementById('btnCenterSelectedImage');
+    if (btnCenterSelectedImage) btnCenterSelectedImage.addEventListener('click', centerSelectedImageCrop);
+    const btnResetSelectedCrop = document.getElementById('btnResetSelectedCrop');
+    if (btnResetSelectedCrop) btnResetSelectedCrop.addEventListener('click', resetSelectedImageCrop);
   }
 
   function applyStageScale() {
@@ -2504,6 +2542,18 @@
       (body || '') +
       '</div></div>';
   }
+  function visualLayerType(type) {
+    if (type === 'textBox') return 'Texto';
+    if (type === 'image') return 'Imagem';
+    if (type === 'lockedImage') return 'Header';
+    if (type === 'gradientOverlay') return 'Gradiente';
+    if (type === 'badge') return 'Badge';
+    if (type === 'shapeLine') return 'Linha';
+    if (type === 'shape') return 'Fundo';
+    if (type === 'overlay') return 'Forma';
+    if (type === 'logo') return 'Logo';
+    return 'Camada';
+  }
   function numberControl(key, prop, label, value) {
     return '<div class="tool-group"><label>' + label + '</label><input type="number" value="' +
       escapeHtmlAttr(Number.isFinite(value) ? value : 0) +
@@ -2513,6 +2563,12 @@
     return '<div class="tool-group"><label>' + label + '</label><input type="text" value="' +
       escapeHtmlAttr(value) +
       '" onchange="updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)"></div>';
+  }
+  function textareaControl(key, prop, label, value) {
+    return '<div class="tool-group"><label>' + label + '</label><textarea onchange="updateNodePropFromInput(\'' +
+      key + '\', \'' + prop + '\', this.value)">' +
+      escapeHtmlText(value) +
+      '</textarea></div>';
   }
   function colorControl(key, prop, label, value) {
     return '<div class="tool-group"><label>' + label + '</label><input type="color" value="' +

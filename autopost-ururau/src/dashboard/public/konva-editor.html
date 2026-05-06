@@ -52,12 +52,11 @@
       background: var(--bg);
     }
     .studio-topbar {
-      min-height: 74px;
       display: grid;
-      grid-template-columns: minmax(260px, 1fr) auto auto;
-      gap: 14px;
-      align-items: center;
-      padding: 12px 18px;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 12px;
+      align-items: stretch;
+      padding: 10px 12px;
       background: rgba(255,255,255,0.92);
       border-bottom: 1px solid var(--border);
       backdrop-filter: blur(14px);
@@ -74,11 +73,43 @@
       color: var(--muted);
       font-size: 12px;
     }
+    .toolbar-groups {
+      min-width: 0;
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px;
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      flex: 0 0 auto;
+    }
+    .toolbar-group.matter {
+      min-width: 430px;
+      flex: 1 1 460px;
+    }
+    .toolbar-label {
+      font-size: 10px;
+      font-weight: 900;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-right: 2px;
+      white-space: nowrap;
+    }
     .article-bar {
       display: grid;
-      grid-template-columns: minmax(260px, 460px) auto;
+      grid-template-columns: minmax(260px, 1fr) auto;
       gap: 8px;
       align-items: center;
+      flex: 1;
     }
     .article-bar input,
     .upload-mode,
@@ -86,8 +117,8 @@
     .tool-group select,
     .tool-group textarea {
       width: 100%;
-      min-height: 36px;
-      padding: 8px 10px;
+      min-height: 38px;
+      padding: 9px 11px;
       background: #fff;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -102,27 +133,18 @@
       border-color: var(--brand);
       box-shadow: 0 0 0 3px rgba(175,0,20,0.10);
     }
-    .action-strip {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-    }
     .upload-control {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
-      padding-right: 8px;
-      border-right: 1px solid var(--border);
     }
-    .upload-mode { width: 156px; }
+    .upload-mode { width: 142px; }
     .btn-editor {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 36px;
-      padding: 8px 11px;
+      min-height: 38px;
+      padding: 9px 12px;
       border-radius: 8px;
       border: 1px solid var(--border);
       background: #fff;
@@ -150,9 +172,9 @@
       flex: 1;
       min-height: 0;
       display: grid;
-      grid-template-columns: 310px minmax(420px, 1fr) 360px;
-      gap: 14px;
-      padding: 14px;
+      grid-template-columns: 260px minmax(560px, 1fr) 330px;
+      gap: 10px;
+      padding: 10px;
     }
     .panel {
       min-height: 0;
@@ -169,7 +191,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       border-bottom: 1px solid var(--border);
       background: var(--panel-soft);
     }
@@ -188,7 +210,7 @@
     .panel-body {
       min-height: 0;
       overflow: auto;
-      padding: 12px;
+      padding: 10px;
     }
     .canvas-area {
       min-width: 0;
@@ -202,8 +224,8 @@
       overflow: hidden;
     }
     .canvas-toolbar {
-      min-height: 48px;
-      padding: 8px 12px;
+      min-height: 44px;
+      padding: 7px 10px;
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
@@ -211,7 +233,7 @@
       gap: 12px;
       background: var(--panel-soft);
     }
-    .scale-control { display: flex; align-items: center; gap: 10px; min-width: 260px; }
+    .scale-control { display: flex; align-items: center; gap: 10px; min-width: 300px; margin-left: auto; }
     .scale-control span { font-size: 12px; color: var(--muted); min-width: 42px; }
     .scale-control input { flex: 1; accent-color: var(--brand); }
     .canvas-scroll {
@@ -221,7 +243,7 @@
       justify-content: center;
       align-items: center;
       overflow: auto;
-      padding: 32px;
+      padding: 16px;
       background:
         linear-gradient(45deg, rgba(0,0,0,0.035) 25%, transparent 25%),
         linear-gradient(-45deg, rgba(0,0,0,0.035) 25%, transparent 25%),
@@ -237,26 +259,28 @@
       background: #000;
     }
     .status-banner {
-      padding: 9px 12px;
+      padding: 8px 10px;
       border-radius: 8px;
       font-size: 12px;
       display: none;
       border: 1px solid transparent;
+      max-width: 620px;
     }
     .status-banner.success { background: #ecfdf3; color: #027a48; border-color: #abefc6; display: block; }
     .status-banner.error { background: #fff1f3; color: #c01048; border-color: #fecdd6; display: block; }
     .status-banner.info { background: #eff4ff; color: #3538cd; border-color: #c7d7fe; display: block; }
     .element-list { display: flex; flex-direction: column; gap: 8px; }
     .element-item {
-      padding: 10px;
+      padding: 9px;
       background: #fff;
       border: 1px solid var(--border);
       border-radius: 10px;
       cursor: pointer;
       font-size: 12px;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 8px;
+      align-items: center;
       transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
     }
     .element-item:hover { border-color: rgba(175,0,20,0.45); }
@@ -266,14 +290,23 @@
       box-shadow: 0 0 0 3px rgba(175,0,20,0.08);
     }
     .element-item.dim { opacity: 0.55; }
-    .element-item.locked .el-name:after { content: ' locked'; color: var(--muted); font-weight: 600; font-size: 10px; }
-    .element-item .el-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-    .element-item .el-name { font-weight: 800; color: var(--text); line-height: 1.2; }
-    .element-item .el-meta { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; text-align: right; line-height: 1.25; }
-    .element-item .el-actions { display: grid; grid-template-columns: repeat(8, minmax(26px, 1fr)); gap: 4px; }
-    .element-item .el-actions button {
-      min-height: 28px;
-      padding: 4px;
+    .element-main { min-width: 0; }
+    .element-item .el-name { display: block; font-weight: 800; color: var(--text); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .element-item .el-meta { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .el-pill {
+      padding: 2px 6px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel-soft);
+      line-height: 1.2;
+    }
+    .element-quick { display: flex; gap: 4px; align-items: center; }
+    .layer-icon-btn,
+    .element-actions-menu summary,
+    .element-actions-menu button {
+      min-height: 30px;
+      min-width: 30px;
+      padding: 4px 7px;
       background: var(--panel-soft);
       border: 1px solid var(--border);
       color: #3d485a;
@@ -283,17 +316,43 @@
       font-weight: 800;
       transition: all 0.15s;
     }
-    .element-item .el-actions button:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .layer-icon-btn:hover,
+    .element-actions-menu summary:hover,
+    .element-actions-menu button:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .element-actions-menu { position: relative; }
+    .element-actions-menu summary { list-style: none; display: inline-flex; align-items: center; justify-content: center; }
+    .element-actions-menu summary::-webkit-details-marker { display: none; }
+    .element-actions-menu[open] .layer-menu {
+      position: absolute;
+      right: 0;
+      top: 34px;
+      z-index: 10;
+      width: 150px;
+      display: grid;
+      gap: 4px;
+      padding: 6px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 12px 28px rgba(23,32,51,0.16);
+    }
+    .element-actions-menu button {
+      width: 100%;
+      justify-content: flex-start;
+      text-align: left;
+      background: #fff;
+      font-size: 12px;
+    }
     .keyboard-hint { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.45; }
     .tool-section {
       border: 1px solid var(--border);
       border-radius: 10px;
       background: #fff;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
       overflow: hidden;
     }
     .tool-section-title {
-      padding: 9px 10px;
+      padding: 8px 10px;
       background: var(--panel-soft);
       border-bottom: 1px solid var(--border);
       font-size: 12px;
@@ -306,7 +365,12 @@
     .tool-group { margin-bottom: 10px; }
     .tool-group:last-child { margin-bottom: 0; }
     .tool-group label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; font-weight: 800; }
-    .tool-group input[type="color"] { height: 38px; padding: 4px; cursor: pointer; }
+    .tool-group textarea {
+      min-height: 132px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .tool-group input[type="color"] { height: 42px; padding: 4px; cursor: pointer; }
     .tool-group input[type="range"] { min-height: 8px; padding: 0; accent-color: var(--brand); }
     .tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .tool-mini-row { display: flex; gap: 8px; margin-top: 8px; }
@@ -314,7 +378,6 @@
     @media (max-width: 1180px) {
       .studio-topbar { grid-template-columns: 1fr; align-items: stretch; }
       .article-bar { grid-template-columns: 1fr auto; }
-      .action-strip { justify-content: flex-start; }
       .studio-workspace { grid-template-columns: 280px minmax(420px, 1fr); }
       .properties-panel { grid-column: 1 / -1; min-height: 360px; }
     }
@@ -325,33 +388,48 @@
     <header class="studio-topbar">
       <div class="brand-block">
         <h1>Template Studio</h1>
-        <p>Editor visual de reels Ururau com camadas, importacao, upload e preview real.</p>
+        <p>Camadas, crop, upload e previews.</p>
       </div>
 
-      <div class="article-bar">
-        <input type="url" id="articleUrlInput" placeholder="Cole a URL da materia para preencher a arte">
-        <button class="btn-editor" id="btnScrapeArticle" title="Extrair categoria, titulo, resumo e imagem da materia">Extrair dados</button>
-      </div>
-
-      <div class="action-strip">
-        <div class="upload-control">
+      <div class="toolbar-groups">
+        <div class="toolbar-group matter">
+          <span class="toolbar-label">Materia</span>
+          <div class="article-bar">
+            <input type="url" id="articleUrlInput" placeholder="Cole a URL da materia">
+            <button class="btn-editor" id="btnScrapeArticle" title="Extrair categoria, titulo, resumo e imagem da materia">Extrair</button>
+          </div>
+        </div>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Adicionar</span>
+          <button class="btn-editor" id="btnAddText" title="Adicionar uma nova camada de texto">Texto</button>
+          <button class="btn-editor" id="btnAddImage" title="Adicionar imagem por URL">Imagem URL</button>
+          <button class="btn-editor" id="btnUploadImage" title="Enviar PNG, JPG ou WEBP">Upload</button>
+          <button class="btn-editor" id="btnAddGradient" title="Adicionar camada de gradiente">Gradiente</button>
+          <button class="btn-editor" id="btnAddLine" title="Adicionar linha decorativa">Linha</button>
+          <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        </div>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Imagem</span>
           <select id="uploadMode" class="upload-mode" title="Escolha como aplicar o upload">
             <option value="replace">Substituir imagem</option>
             <option value="layer">Nova camada</option>
           </select>
-          <button class="btn-editor" id="btnUploadImage" title="Enviar PNG, JPG ou WEBP">Upload</button>
-          <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+          <button class="btn-editor" id="btnReplaceImage" title="Substituir imagem da materia por arquivo local">Substituir</button>
+          <button class="btn-editor" id="btnCenterSelectedImage" title="Centralizar crop da imagem selecionada">Centralizar</button>
+          <button class="btn-editor" id="btnResetSelectedCrop" title="Resetar recorte da imagem selecionada">Resetar recorte</button>
         </div>
-        <button class="btn-editor" id="btnAddText" title="Adicionar uma nova camada de texto">Texto</button>
-        <button class="btn-editor" id="btnAddImage" title="Adicionar imagem por URL">Imagem URL</button>
-        <button class="btn-editor" id="btnAddGradient" title="Adicionar camada de gradiente">Gradiente</button>
-        <button class="btn-editor" id="btnAddLine" title="Adicionar linha decorativa">Linha</button>
-        <button class="btn-editor" id="btnDuplicateSelected" title="Duplicar a camada selecionada">Duplicar</button>
-        <button class="btn-editor danger" id="btnDeleteSelected" title="Apagar a camada selecionada">Apagar</button>
-        <button class="btn-editor primary" id="btnSave" title="Salvar template ativo">Salvar</button>
-        <button class="btn-editor" id="btnPreviewKonva" title="Gerar PNG client-side do canvas atual">Preview PNG</button>
-        <button class="btn-editor" id="btnPreviewReal" title="Gerar preview usando a API real">Preview Real</button>
-        <button class="btn-editor" id="btnReset" title="Restaurar template padrao">Resetar</button>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Acoes</span>
+          <button class="btn-editor" id="btnDuplicateSelected" title="Duplicar a camada selecionada">Duplicar</button>
+          <button class="btn-editor danger" id="btnDeleteSelected" title="Apagar a camada selecionada">Apagar</button>
+          <button class="btn-editor primary" id="btnSave" title="Salvar template ativo">Salvar</button>
+          <button class="btn-editor" id="btnReset" title="Restaurar template padrao">Padrao</button>
+        </div>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Preview</span>
+          <button class="btn-editor" id="btnPreviewKonva" title="Gerar PNG client-side do canvas atual">PNG</button>
+          <button class="btn-editor" id="btnPreviewReal" title="Gerar preview usando a API real">Real API</button>
+        </div>
       </div>
     </header>
 
@@ -376,8 +454,8 @@
           <div id="statusBanner" class="status-banner"></div>
           <div class="scale-control">
             <span>Zoom</span>
-            <input type="range" id="scaleSlider" min="0.2" max="0.9" step="0.05" value="0.45">
-            <span id="scaleValue">45%</span>
+            <input type="range" id="scaleSlider" min="0.25" max="1.0" step="0.05" value="0.5">
+            <span id="scaleValue">50%</span>
           </div>
         </div>
         <div class="canvas-scroll">

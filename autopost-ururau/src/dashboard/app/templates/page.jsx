@@ -203,8 +203,8 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="space-y-4 animate-fade-up">
-      <div className="flex justify-between items-start gap-4 flex-wrap">
+    <div className="space-y-3 animate-fade-up -mx-2 2xl:-mx-4">
+      <div className="flex justify-between items-start gap-4 flex-wrap px-2 2xl:px-4">
         <div>
           <h2 className="text-2xl font-bold">Templates</h2>
           <p className="text-sm text-muted-foreground">Studio visual Konva para editar, importar, salvar e gerar previews do template ativo.</p>
@@ -224,14 +224,14 @@ export default function TemplatesPage() {
       </div>
 
       {status.message && (
-        <div className={`p-3 rounded-lg text-sm ${status.type === 'error' ? 'bg-destructive/10 text-destructive' : status.type === 'info' ? 'bg-muted text-foreground' : 'bg-success/10 text-success'}`}>
+        <div className={`mx-2 2xl:mx-4 p-3 rounded-lg text-sm ${status.type === 'error' ? 'bg-destructive/10 text-destructive' : status.type === 'info' ? 'bg-muted text-foreground' : 'bg-success/10 text-success'}`}>
           {status.message}
         </div>
       )}
 
-      <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4 min-h-[calc(100vh-160px)]">
+      <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_330px] gap-3 min-h-[calc(100vh-132px)] px-2 2xl:px-4">
         <div className={`bg-card border border-border rounded-xl overflow-hidden shadow-sm ${editorExpanded ? 'fixed inset-3 z-50 flex flex-col' : ''}`}>
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3 bg-card">
+          <div className="px-4 py-2.5 border-b border-border flex items-center justify-between gap-3 bg-card">
             <div>
               <h3 className="font-semibold">Editor visual</h3>
               <p className="text-xs text-muted-foreground">Use o painel interno para upload, crop, camadas, preview e salvamento.</p>
@@ -246,7 +246,7 @@ export default function TemplatesPage() {
               </button>
             )}
           </div>
-          <div className="bg-muted/40 flex-1" style={{ height: editorExpanded ? 'auto' : 'calc(100vh - 230px)', minHeight: editorExpanded ? 0 : 760 }}>
+          <div className="bg-muted/40 flex-1" style={{ height: editorExpanded ? 'auto' : 'calc(100vh - 178px)', minHeight: editorExpanded ? 0 : 820 }}>
             <iframe
               ref={iframeRef}
               src={`/konva-editor.html?v=${editorNonce}`}
@@ -258,7 +258,7 @@ export default function TemplatesPage() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-sm 2xl:sticky 2xl:top-4 self-start max-h-[calc(100vh-120px)] overflow-auto">
+        <div className="bg-card border border-border rounded-xl p-3 space-y-3 shadow-sm 2xl:sticky 2xl:top-3 self-start max-h-[calc(100vh-106px)] overflow-auto">
           <h3 className="font-semibold flex items-center gap-2">
             <Eye size={16} /> Preview real (com conteudo arbitrario)
           </h3>
@@ -272,32 +272,32 @@ export default function TemplatesPage() {
               <Link2 size={12} /> URL da materia (opcional)
             </label>
             <input placeholder="https://exemplo.com/noticia"
-                   className="w-full border rounded px-2 py-1.5 text-sm bg-background"
+                   className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
                    value={previewForm.url}
                    onChange={e => setPreviewForm(p => ({ ...p, url: e.target.value }))} />
             <button onClick={scrapeFromUrl} disabled={!previewForm.url}
-                    className="w-full border rounded px-2 py-1.5 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">
+                    className="w-full border rounded-lg px-3 py-2 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">
               Extrair dados da materia
             </button>
           </div>
 
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">Titulo</label>
-            <input className="w-full border rounded px-2 py-1.5 text-sm bg-background"
+            <input className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
                    value={previewForm.title}
                    onChange={e => setPreviewForm(p => ({ ...p, title: e.target.value }))} />
           </div>
 
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">Resumo</label>
-            <textarea className="w-full border rounded px-2 py-1.5 text-sm bg-background"
+            <textarea className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
                       rows={3} value={previewForm.summary}
                       onChange={e => setPreviewForm(p => ({ ...p, summary: e.target.value }))} />
           </div>
 
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">Categoria</label>
-            <select className="w-full border rounded px-2 py-1.5 text-sm bg-background"
+            <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
                     value={previewForm.category}
                     onChange={e => setPreviewForm(p => ({ ...p, category: e.target.value }))}>
               {Object.keys(categoryColors).map(c => (<option key={c} value={c}>{c}</option>))}
@@ -307,7 +307,7 @@ export default function TemplatesPage() {
           {previewForm.image && (
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground">Imagem principal</label>
-              <input className="w-full border rounded px-2 py-1.5 text-sm bg-background"
+              <input className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
                      value={previewForm.image}
                      onChange={e => {
                        const image = e.target.value;
@@ -318,7 +318,7 @@ export default function TemplatesPage() {
           )}
 
           <button onClick={generatePreview}
-                  className="w-full bg-primary text-primary-foreground rounded px-2 py-2 flex items-center justify-center gap-2 text-sm font-medium hover:opacity-90">
+                  className="w-full bg-primary text-primary-foreground rounded-lg px-3 py-2.5 flex items-center justify-center gap-2 text-sm font-medium hover:opacity-90">
             <Eye size={14} /> Gerar preview real
           </button>
 
