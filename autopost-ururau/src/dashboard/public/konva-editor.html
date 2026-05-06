@@ -21,178 +21,384 @@
       font-style: normal;
       font-display: block;
     }
+    :root {
+      color-scheme: light;
+      --bg: #f6f7fb;
+      --panel: #ffffff;
+      --panel-soft: #f9fafc;
+      --border: #dfe3ea;
+      --muted: #687385;
+      --text: #172033;
+      --canvas-bg: #e8ebf1;
+      --brand: #af0014;
+      --brand-strong: #8f0011;
+      --shadow: 0 18px 55px rgba(23, 32, 51, 0.12);
+    }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       padding: 0;
-      background: #0a0a1a;
-      color: #fff;
+      background: var(--bg);
+      color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, sans-serif;
-      overflow: hidden;
       height: 100%;
+      overflow: hidden;
     }
-    .editor-container {
-      display: flex;
-      gap: 16px;
-      padding: 16px;
+    button, input, select, textarea { font: inherit; }
+    .studio-shell {
       height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+    .studio-topbar {
+      min-height: 74px;
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto auto;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 18px;
+      background: rgba(255,255,255,0.92);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      z-index: 5;
+    }
+    .brand-block h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+    .brand-block p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .article-bar {
+      display: grid;
+      grid-template-columns: minmax(260px, 460px) auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .article-bar input,
+    .upload-mode,
+    .tool-group input,
+    .tool-group select,
+    .tool-group textarea {
+      width: 100%;
+      min-height: 36px;
+      padding: 8px 10px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    .article-bar input:focus,
+    .tool-group input:focus,
+    .tool-group select:focus,
+    .tool-group textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(175,0,20,0.10);
+    }
+    .action-strip {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .upload-control {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding-right: 8px;
+      border-right: 1px solid var(--border);
+    }
+    .upload-mode { width: 156px; }
+    .btn-editor {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 8px 11px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .btn-editor:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+      box-shadow: 0 5px 18px rgba(23, 32, 51, 0.08);
+    }
+    .btn-editor.primary {
+      background: var(--brand);
+      color: #fff;
+      border-color: var(--brand);
+    }
+    .btn-editor.primary:hover { background: var(--brand-strong); color: #fff; }
+    .btn-editor.danger { color: #b42318; }
+    .btn-editor.danger:hover { border-color: #b42318; color: #b42318; }
+    .studio-workspace {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 310px minmax(420px, 1fr) 360px;
+      gap: 14px;
+      padding: 14px;
+    }
+    .panel {
+      min-height: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(23, 32, 51, 0.05);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel-soft);
+    }
+    .panel-title {
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #2a3345;
+    }
+    .panel-subtitle {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+    .panel-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
     }
     .canvas-area {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .canvas-toolbar {
+      min-height: 48px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--panel-soft);
+    }
+    .scale-control { display: flex; align-items: center; gap: 10px; min-width: 260px; }
+    .scale-control span { font-size: 12px; color: var(--muted); min-width: 42px; }
+    .scale-control input { flex: 1; accent-color: var(--brand); }
+    .canvas-scroll {
       flex: 1;
+      min-height: 0;
       display: flex;
       justify-content: center;
       align-items: center;
-      background: #0a0a1a;
-      border-radius: 12px;
-      border: 1px solid #1a1a3a;
       overflow: auto;
-      min-width: 0;
+      padding: 32px;
+      background:
+        linear-gradient(45deg, rgba(0,0,0,0.035) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(0,0,0,0.035) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(0,0,0,0.035) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(0,0,0,0.035) 75%),
+        var(--canvas-bg);
+      background-size: 28px 28px;
+      background-position: 0 0, 0 14px, 14px -14px, -14px 0;
     }
-    .canvas-area #konva-container { transform-origin: center; }
-    .toolbar {
-      width: 320px;
-      flex-shrink: 0;
-      background: #111122;
-      border: 1px solid #1a1a3a;
-      border-radius: 12px;
-      padding: 18px;
-      overflow-y: auto;
-      max-height: 100vh;
+    #konva-container {
+      transform-origin: center;
+      box-shadow: 0 20px 70px rgba(0,0,0,0.22);
+      background: #000;
     }
-    .toolbar h3 {
-      font-size: 14px;
-      margin: 0 0 14px;
-      color: #E63946;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .tool-group { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid #1a1a3a; }
-    .tool-group:last-child { border-bottom: none; }
-    .tool-group label { display: block; font-size: 12px; color: #a0a0b0; margin-bottom: 6px; font-weight: 600; }
-    .tool-group input, .tool-group select {
-      width: 100%;
-      padding: 8px 10px;
-      background: #0a0a1a;
-      border: 1px solid #1a1a3a;
+    .status-banner {
+      padding: 9px 12px;
       border-radius: 8px;
-      color: #fff;
-      font-size: 13px;
+      font-size: 12px;
+      display: none;
+      border: 1px solid transparent;
     }
-    .tool-group input[type="color"] { height: 40px; padding: 4px; cursor: pointer; }
-    .tool-group input[type="range"] { padding: 0; height: 8px; }
-    .tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .btn-editor {
-      width: 100%;
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
-      font-weight: 700;
-      cursor: pointer;
-      margin-bottom: 6px;
-      transition: all 0.2s;
-      font-size: 13px;
-    }
-    .btn-editor.primary { background: #E63946; color: #fff; }
-    .btn-editor.primary:hover { background: #c11f25; }
-    .btn-editor.secondary { background: transparent; color: #fff; border: 1px solid #1a1a3a; }
-    .btn-editor.secondary:hover { border-color: #E63946; color: #E63946; }
-    .element-list { display: flex; flex-direction: column; gap: 6px; }
+    .status-banner.success { background: #ecfdf3; color: #027a48; border-color: #abefc6; display: block; }
+    .status-banner.error { background: #fff1f3; color: #c01048; border-color: #fecdd6; display: block; }
+    .status-banner.info { background: #eff4ff; color: #3538cd; border-color: #c7d7fe; display: block; }
+    .element-list { display: flex; flex-direction: column; gap: 8px; }
     .element-item {
-      padding: 8px 10px;
-      background: rgba(255,255,255,0.03);
-      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
       cursor: pointer;
       font-size: 12px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      border: 2px solid transparent;
+      gap: 8px;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
     }
-    .element-item:hover { background: rgba(230,57,70,0.08); }
-    .element-item.active { border-color: #E63946; background: rgba(230,57,70,0.12); }
-    .element-item.dim { opacity: 0.5; }
-    .element-item .el-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-    .element-item .el-name { font-weight: 600; color: #fff; }
-    .element-item .el-meta { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-    .element-item .el-actions { display: flex; gap: 3px; flex-wrap: wrap; }
+    .element-item:hover { border-color: rgba(175,0,20,0.45); }
+    .element-item.active {
+      border-color: var(--brand);
+      background: #fff7f8;
+      box-shadow: 0 0 0 3px rgba(175,0,20,0.08);
+    }
+    .element-item.dim { opacity: 0.55; }
+    .element-item.locked .el-name:after { content: ' locked'; color: var(--muted); font-weight: 600; font-size: 10px; }
+    .element-item .el-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .element-item .el-name { font-weight: 800; color: var(--text); line-height: 1.2; }
+    .element-item .el-meta { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; text-align: right; line-height: 1.25; }
+    .element-item .el-actions { display: grid; grid-template-columns: repeat(8, minmax(26px, 1fr)); gap: 4px; }
     .element-item .el-actions button {
-      flex: 1;
-      min-width: 26px;
-      padding: 4px 5px;
-      background: rgba(0,0,0,0.4);
-      border: 1px solid #1a1a3a;
-      color: #ddd;
-      border-radius: 4px;
+      min-height: 28px;
+      padding: 4px;
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      color: #3d485a;
+      border-radius: 6px;
       cursor: pointer;
       font-size: 11px;
+      font-weight: 800;
       transition: all 0.15s;
     }
-    .element-item .el-actions button:hover { background: #E63946; color: #fff; border-color: #E63946; }
-    .element-type { font-size: 10px; color: #a0a0b0; text-transform: uppercase; }
-    .keyboard-hint { font-size: 11px; color: #666; margin-top: 12px; line-height: 1.5; }
-    .scale-control { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .scale-control span { font-size: 12px; color: #a0a0b0; min-width: 40px; }
-    .scale-control input { flex: 1; }
-    .status-banner {
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-size: 12px;
+    .element-item .el-actions button:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .keyboard-hint { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.45; }
+    .tool-section {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
       margin-bottom: 12px;
-      display: none;
+      overflow: hidden;
     }
-    .status-banner.success { background: rgba(46,196,182,0.12); color: #4dd0c2; display: block; }
-    .status-banner.error { background: rgba(230,57,70,0.12); color: #ff6470; display: block; }
-    .status-banner.info { background: rgba(100,150,255,0.12); color: #6a9bff; display: block; }
+    .tool-section-title {
+      padding: 9px 10px;
+      background: var(--panel-soft);
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 800;
+      color: #2a3345;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .tool-section-body { padding: 10px; }
+    .tool-group { margin-bottom: 10px; }
+    .tool-group:last-child { margin-bottom: 0; }
+    .tool-group label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; font-weight: 800; }
+    .tool-group input[type="color"] { height: 38px; padding: 4px; cursor: pointer; }
+    .tool-group input[type="range"] { min-height: 8px; padding: 0; accent-color: var(--brand); }
+    .tool-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tool-mini-row { display: flex; gap: 8px; margin-top: 8px; }
+    .tool-mini-row .btn-editor { flex: 1; }
+    @media (max-width: 1180px) {
+      .studio-topbar { grid-template-columns: 1fr; align-items: stretch; }
+      .article-bar { grid-template-columns: 1fr auto; }
+      .action-strip { justify-content: flex-start; }
+      .studio-workspace { grid-template-columns: 280px minmax(420px, 1fr); }
+      .properties-panel { grid-column: 1 / -1; min-height: 360px; }
+    }
   </style>
 </head>
 <body>
-  <div class="editor-container">
-    <div class="canvas-area">
-      <div id="konva-container"></div>
-    </div>
-
-    <div class="toolbar">
-      <div id="statusBanner" class="status-banner"></div>
-
-      <div class="scale-control">
-        <span>Zoom</span>
-        <input type="range" id="scaleSlider" min="0.2" max="1.0" step="0.05" value="0.45">
-        <span id="scaleValue">45%</span>
+  <div class="studio-shell">
+    <header class="studio-topbar">
+      <div class="brand-block">
+        <h1>Template Studio</h1>
+        <p>Editor visual de reels Ururau com camadas, importacao, upload e preview real.</p>
       </div>
 
-      <h3>Materia</h3>
-      <div class="tool-group">
-        <label for="articleUrlInput">URL da materia</label>
-        <input type="url" id="articleUrlInput" placeholder="https://www.ururau.com.br/noticia">
-        <button class="btn-editor secondary" id="btnScrapeArticle" style="margin-top:8px">Extrair dados da materia</button>
+      <div class="article-bar">
+        <input type="url" id="articleUrlInput" placeholder="Cole a URL da materia para preencher a arte">
+        <button class="btn-editor" id="btnScrapeArticle" title="Extrair categoria, titulo, resumo e imagem da materia">Extrair dados</button>
       </div>
 
-      <h3>Camadas</h3>
-      <div class="element-list" id="elementList"></div>
-      <div class="keyboard-hint" style="margin-top:6px">
-        ↑↓ subir/descer · ⇈⇊ frente/tras · 👁 visivel · 🔒/🔓 lock · 🗑 apagar
+      <div class="action-strip">
+        <div class="upload-control">
+          <select id="uploadMode" class="upload-mode" title="Escolha como aplicar o upload">
+            <option value="replace">Substituir imagem</option>
+            <option value="layer">Nova camada</option>
+          </select>
+          <button class="btn-editor" id="btnUploadImage" title="Enviar PNG, JPG ou WEBP">Upload</button>
+          <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        </div>
+        <button class="btn-editor" id="btnAddText" title="Adicionar uma nova camada de texto">Texto</button>
+        <button class="btn-editor" id="btnAddImage" title="Adicionar imagem por URL">Imagem URL</button>
+        <button class="btn-editor" id="btnAddGradient" title="Adicionar camada de gradiente">Gradiente</button>
+        <button class="btn-editor" id="btnAddLine" title="Adicionar linha decorativa">Linha</button>
+        <button class="btn-editor" id="btnDuplicateSelected" title="Duplicar a camada selecionada">Duplicar</button>
+        <button class="btn-editor danger" id="btnDeleteSelected" title="Apagar a camada selecionada">Apagar</button>
+        <button class="btn-editor primary" id="btnSave" title="Salvar template ativo">Salvar</button>
+        <button class="btn-editor" id="btnPreviewKonva" title="Gerar PNG client-side do canvas atual">Preview PNG</button>
+        <button class="btn-editor" id="btnPreviewReal" title="Gerar preview usando a API real">Preview Real</button>
+        <button class="btn-editor" id="btnReset" title="Restaurar template padrao">Resetar</button>
       </div>
+    </header>
 
-      <h3 style="margin-top:18px">Propriedades</h3>
-      <div id="propertiesPanel">
-        <p style="color:#666;font-size:12px">Selecione um elemento no canvas para editar.</p>
-      </div>
+    <main class="studio-workspace">
+      <aside class="panel layers-panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Camadas</div>
+            <div class="panel-subtitle">Selecione, ordene, oculte, bloqueie ou duplique.</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="element-list" id="elementList"></div>
+          <div class="keyboard-hint">
+            Atalhos: setas movem 1px; Shift+setas movem 10px; duplo clique edita texto.
+          </div>
+        </div>
+      </aside>
 
-      <div style="margin-top:18px">
-        <button class="btn-editor primary" id="btnSave">Salvar template</button>
-        <button class="btn-editor secondary" id="btnPreviewKonva">Preview do Editor (PNG)</button>
-        <button class="btn-editor secondary" id="btnPreviewReal">Gerar Preview Real (API)</button>
-        <button class="btn-editor secondary" id="btnReset">Restaurar Padrao</button>
-      </div>
+      <section class="canvas-area">
+        <div class="canvas-toolbar">
+          <div id="statusBanner" class="status-banner"></div>
+          <div class="scale-control">
+            <span>Zoom</span>
+            <input type="range" id="scaleSlider" min="0.2" max="0.9" step="0.05" value="0.45">
+            <span id="scaleValue">45%</span>
+          </div>
+        </div>
+        <div class="canvas-scroll">
+          <div id="konva-container"></div>
+        </div>
+      </section>
 
-      <div class="keyboard-hint">
-        <strong>Atalhos:</strong><br>
-        Setas = mover 1px<br>
-        Shift+Setas = mover 10px<br>
-        Duplo clique em texto = editar<br>
-        Click no canvas = desselecionar
-      </div>
-    </div>
+      <aside class="panel properties-panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Propriedades</div>
+            <div class="panel-subtitle">Ajustes da camada selecionada.</div>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="propertiesPanel">
+            <p style="color:#687385;font-size:12px;margin:0">Selecione um elemento no canvas para editar.</p>
+          </div>
+        </div>
+      </aside>
+    </main>
   </div>
 
   <script src="konva-editor.js"></script>

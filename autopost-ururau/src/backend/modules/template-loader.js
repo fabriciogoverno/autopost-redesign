@@ -107,6 +107,12 @@ export function migrateTemplate(template) {
         layer.fitMode = 'cover';
         layer.objectFit = 'cover';
         layer.focalPoint = layer.focalPoint || { x: 0.5, y: 0.5 };
+        layer.focalX = typeof layer.focalX === 'number' ? layer.focalX : (typeof layer.focalPoint.x === 'number' ? layer.focalPoint.x : 0.5);
+        layer.focalY = typeof layer.focalY === 'number' ? layer.focalY : (typeof layer.focalPoint.y === 'number' ? layer.focalPoint.y : 0.5);
+        layer.focalPoint = { x: layer.focalX, y: layer.focalY };
+        layer.zoom = typeof layer.zoom === 'number' ? layer.zoom : 1;
+        layer.panX = typeof layer.panX === 'number' ? layer.panX : 0;
+        layer.panY = typeof layer.panY === 'number' ? layer.panY : 0;
         layer.opacity = 1;
         layer.zIndex = 10;
         layer.binding = layer.binding || 'article.image';

@@ -116,6 +116,7 @@
     if (!banner) return;
     banner.textContent = message;
     banner.className = 'status-banner ' + (type || 'info');
+    banner.style.display = 'block';
     if (type !== 'error') {
       setTimeout(function () { banner.style.display = 'none'; }, 3500);
     }
@@ -232,7 +233,7 @@
 
     // Garante presenca das camadas obrigatorias mesmo se o JSON antigo nao tiver
     ensureLayer('blackBackground', { type: 'shape', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, color: '#000000', opacity: 1, visible: true, locked: true, deletable: false, zIndex: 0 });
-    ensureLayer('articleImage', { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, src: '', fitMode: 'cover', objectFit: 'cover', opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
+    ensureLayer('articleImage', { type: 'image', x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT, src: '', fitMode: 'cover', objectFit: 'cover', focalPoint: { x: 0.5, y: 0.5 }, focalX: 0.5, focalY: 0.5, zoom: 1, panX: 0, panY: 0, opacity: 1, visible: true, locked: false, deletable: true, zIndex: 10 });
     ensureLayer('lockedHeader', { type: 'lockedImage', x: 0, y: 0, width: CANVAS_WIDTH, height: 260, src: TEMPLATE_BASE_URL, crop: { x: 0, y: 0, width: CANVAS_WIDTH, height: 260 }, opacity: 1, visible: true, locked: true, deletable: false, zIndex: 90, shadow: defaultHeaderShadow(), outline: defaultHeaderOutline() });
 
     // Cria cada layer no Konva. Aguarda imagens.
@@ -399,9 +400,18 @@
         });
         node.setAttr('componentType', 'image');
         node.setAttr('src', src);
+        const focal = config.focalPoint || { x: config.focalX, y: config.focalY };
         node.setAttr('fitMode', config.fitMode || config.objectFit || 'cover');
         node.setAttr('objectFit', config.objectFit || config.fitMode || 'cover');
-        node.setAttr('focalPoint', config.focalPoint || { x: 0.5, y: 0.5 });
+        node.setAttr('focalPoint', {
+          x: clamp01(numOr(focal.x, 0.5)),
+          y: clamp01(numOr(focal.y, 0.5))
+        });
+        node.setAttr('focalX', clamp01(numOr(config.focalX, focal.x != null ? focal.x : 0.5)));
+        node.setAttr('focalY', clamp01(numOr(config.focalY, focal.y != null ? focal.y : 0.5)));
+        node.setAttr('zoom', Math.max(0.1, numOr(config.zoom, 1)));
+        node.setAttr('panX', numOr(config.panX, 0));
+        node.setAttr('panY', numOr(config.panY, 0));
         applyImageCoverCrop(node, image);
         if (placeholder) placeholder.destroy();
         setupElementEvents(node, key);
@@ -866,6 +876,213 @@
     deselectAll();
   }
 
+  async function addLayerFromConfig(baseKey, config) {
+    if (!templateData.layers) templateData.layers = {};
+    saveUndo();
+    const key = uniqueLayerKey(baseKey);
+    const nextConfig = {
+      id: key,
+      label: config.label || uniqueLayerLabel(DEFAULT_LABELS[baseKey] || baseKey),
+      visible: true,
+      locked: false,
+      deletable: true,
+      ...config
+    };
+    nextConfig.id = key;
+    nextConfig.zIndex = insertZIndexAbove(numOr(nextConfig.zIndex, 50));
+    templateData.layers[key] = nextConfig;
+    const meta = readMeta(key, nextConfig);
+    layerMeta[key] = meta;
+    await createKonvaForLayer(key, nextConfig, meta);
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    selectElement(key);
+    return key;
+  }
+
+  async function addTextLayer() {
+    await addLayerFromConfig('textBox', {
+      type: 'textBox',
+      label: 'Novo texto',
+      text: 'Novo texto',
+      x: 120,
+      y: 980,
+      width: 760,
+      maxWidth: 760,
+      fontFamily: DEFAULT_FONT_FAMILY,
+      fontWeight: 'bold',
+      fontSize: 48,
+      lineHeight: 58,
+      color: '#FFFFFF',
+      opacity: 1,
+      zIndex: DEFAULT_Z_INDEX.summary + 1
+    });
+    showStatus('Texto adicionado.', 'success');
+  }
+
+  async function addGradientLayer() {
+    await addLayerFromConfig('gradientOverlay', {
+      type: 'gradientOverlay',
+      label: 'Novo gradiente',
+      x: 0,
+      y: 1080,
+      width: CANVAS_WIDTH,
+      height: 520,
+      angle: 90,
+      opacity: 0.88,
+      colorStops: [
+        { offset: 0, color: 'rgba(0,0,0,0)' },
+        { offset: 1, color: 'rgba(0,0,0,0.92)' }
+      ],
+      zIndex: DEFAULT_Z_INDEX.bottomGradient
+    });
+    showStatus('Gradiente adicionado.', 'success');
+  }
+
+  async function addLineLayer() {
+    await addLayerFromConfig('shapeLine', {
+      type: 'shapeLine',
+      label: 'Nova linha',
+      x: 120,
+      y: 1460,
+      width: 240,
+      height: 8,
+      color: '#c11f25',
+      opacity: 1,
+      zIndex: DEFAULT_Z_INDEX.separator
+    });
+    showStatus('Linha adicionada.', 'success');
+  }
+
+  async function addImageLayerFromSource(src, label) {
+    await addLayerFromConfig('image', {
+      type: 'image',
+      label: label || 'Nova imagem',
+      src: src,
+      x: 140,
+      y: 360,
+      width: 800,
+      height: 800,
+      fitMode: 'cover',
+      objectFit: 'cover',
+      focalPoint: { x: 0.5, y: 0.5 },
+      focalX: 0.5,
+      focalY: 0.5,
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      opacity: 1,
+      zIndex: DEFAULT_Z_INDEX.articleImage + 1
+    });
+    showStatus('Imagem adicionada como camada.', 'success');
+  }
+
+  function addImageLayerByUrl() {
+    const src = cleanText(prompt('URL da imagem para adicionar como camada:') || '');
+    if (!src) return;
+    addImageLayerFromSource(src, 'Imagem por URL');
+  }
+
+  function duplicateSelectedLayer() {
+    if (!selectedElement) { showStatus('Selecione uma camada para duplicar.', 'info'); return; }
+    duplicateLayer(selectedElement);
+  }
+
+  function deleteSelectedLayer() {
+    if (!selectedElement) { showStatus('Selecione uma camada para apagar.', 'info'); return; }
+    deleteLayer(selectedElement);
+  }
+
+  function setImageSourceForKey(key, src) {
+    if (!key || !src || !templateData.layers[key] || !layerMeta[key]) return;
+    saveUndo();
+    const config = templateData.layers[key];
+    config.src = src;
+    config.image = '';
+    config.url = '';
+    const meta = layerMeta[key];
+    const existing = konvaElements[key];
+    if (existing) {
+      config.x = Math.round(existing.x());
+      config.y = Math.round(existing.y());
+      config.width = Math.round(existing.width ? existing.width() : numOr(config.width, CANVAS_WIDTH));
+      config.height = Math.round(existing.height ? existing.height() : numOr(config.height, CANVAS_HEIGHT));
+      config.opacity = existing.opacity ? existing.opacity() : config.opacity;
+      config.fitMode = existing.getAttr('fitMode') || config.fitMode || 'cover';
+      config.objectFit = existing.getAttr('objectFit') || config.fitMode;
+      config.focalPoint = existing.getAttr('focalPoint') || config.focalPoint || { x: 0.5, y: 0.5 };
+      config.focalX = existing.getAttr('focalX') ?? config.focalPoint.x ?? 0.5;
+      config.focalY = existing.getAttr('focalY') ?? config.focalPoint.y ?? 0.5;
+      config.zoom = existing.getAttr('zoom') ?? 1;
+      config.panX = existing.getAttr('panX') ?? 0;
+      config.panY = existing.getAttr('panY') ?? 0;
+      existing.destroy();
+      delete konvaElements[key];
+    }
+    loadImageNode(key, src, config, meta).then(function () {
+      applyZIndexOrder();
+      layer.draw();
+      updateElementList();
+      selectElement(key);
+      showStatus('Imagem atualizada.', 'success');
+    }).catch(function () {
+      showStatus('Nao foi possivel carregar a imagem informada.', 'error');
+    });
+  }
+
+  function handleImageUpload(event) {
+    const file = event && event.target && event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/i.test(file.type)) {
+      showStatus('Envie uma imagem PNG, JPG ou WEBP.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function () {
+      const dataUrl = String(reader.result || '');
+      const mode = (document.getElementById('uploadMode') || {}).value || 'replace';
+      if (mode === 'layer') addImageLayerFromSource(dataUrl, file.name || 'Imagem enviada');
+      else loadArticleImageUrl(dataUrl);
+      event.target.value = '';
+    };
+    reader.onerror = function () { showStatus('Falha ao ler o arquivo de imagem.', 'error'); };
+    reader.readAsDataURL(file);
+  }
+
+  window.centerImageCrop = function (key) {
+    const node = konvaElements[key];
+    if (!node) return;
+    saveUndo();
+    node.setAttr('focalX', 0.5);
+    node.setAttr('focalY', 0.5);
+    node.setAttr('focalPoint', { x: 0.5, y: 0.5 });
+    node.setAttr('panX', 0);
+    node.setAttr('panY', 0);
+    if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    layer.draw();
+    updatePropertiesPanel(key);
+    refreshSelectionIndicator();
+  };
+
+  window.resetImageCrop = function (key) {
+    const node = konvaElements[key];
+    if (!node) return;
+    saveUndo();
+    node.setAttr('fitMode', 'cover');
+    node.setAttr('objectFit', 'cover');
+    node.setAttr('focalX', 0.5);
+    node.setAttr('focalY', 0.5);
+    node.setAttr('focalPoint', { x: 0.5, y: 0.5 });
+    node.setAttr('zoom', 1);
+    node.setAttr('panX', 0);
+    node.setAttr('panY', 0);
+    if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    layer.draw();
+    updatePropertiesPanel(key);
+    refreshSelectionIndicator();
+  };
+
   // ============================================================
   // EVENTOS DOS ELEMENTOS
   // ============================================================
@@ -1074,23 +1291,23 @@
       const node = konvaElements[key];
       const active = selectedElement === key ? 'active' : '';
       const dim = meta.visible ? '' : ' dim';
-      const lockIcon = meta.locked ? '🔒' : '🔓';
-      const visIcon = meta.visible ? '👁' : '⊘';
+      const lockIcon = meta.locked ? 'Lock' : 'Free';
+      const visIcon = meta.visible ? 'On' : 'Off';
       const pos = 'X' + Math.round(node.x()) + ' Y' + Math.round(node.y()) + ' z' + meta.zIndex;
-      html += '<div class="element-item ' + active + dim + '" onclick="selectElementFromList(\'' + key + '\')">' +
+      html += '<div class="element-item ' + active + dim + (meta.locked ? ' locked' : '') + '" onclick="selectElementFromList(\'' + key + '\')">' +
         '<div class="el-row">' +
           '<span class="el-name">' + escapeHtmlText(meta.label) + '</span>' +
-          '<span class="el-meta">' + escapeHtmlText(meta.type) + ' · ' + pos + '</span>' +
+          '<span class="el-meta">' + escapeHtmlText(meta.type) + '<br>' + pos + '</span>' +
         '</div>' +
         '<div class="el-actions" onclick="event.stopPropagation()">' +
-          '<button title="Subir camada" onclick="window.layerCmd(\'up\', \'' + key + '\')">↑</button>' +
-          '<button title="Descer camada" onclick="window.layerCmd(\'down\', \'' + key + '\')">↓</button>' +
-          '<button title="Trazer para frente" onclick="window.layerCmd(\'front\', \'' + key + '\')">⇈</button>' +
-          '<button title="Enviar para tras" onclick="window.layerCmd(\'back\', \'' + key + '\')">⇊</button>' +
+          '<button title="Subir camada" onclick="window.layerCmd(\'up\', \'' + key + '\')">Up</button>' +
+          '<button title="Descer camada" onclick="window.layerCmd(\'down\', \'' + key + '\')">Dn</button>' +
+          '<button title="Trazer para frente" onclick="window.layerCmd(\'front\', \'' + key + '\')">Top</button>' +
+          '<button title="Enviar para tras" onclick="window.layerCmd(\'back\', \'' + key + '\')">Bot</button>' +
           '<button title="Mostrar/Ocultar" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + visIcon + '</button>' +
           '<button title="Bloquear/Desbloquear" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + lockIcon + '</button>' +
-          '<button title="Duplicar" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')">⧉</button>' +
-          (meta.deletable ? '<button title="Apagar" onclick="window.layerCmd(\'delete\', \'' + key + '\')">🗑</button>' : '') +
+          '<button title="Duplicar" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')">Copy</button>' +
+          (meta.deletable ? '<button title="Apagar" onclick="window.layerCmd(\'delete\', \'' + key + '\')">Del</button>' : '') +
         '</div>' +
       '</div>';
     });
@@ -1116,28 +1333,32 @@
     const meta = layerMeta[key];
     if (!node || !meta) return;
     const componentType = meta.type;
-    let html = '<div class="tool-group"><label>Componente</label><input type="text" value="' +
-      escapeHtmlAttr(meta.label + ' / ' + componentType) + '" disabled></div>';
-    html += '<div class="tool-row">' +
-      numberControl(key, 'x', 'X', Math.round(node.x())) +
-      numberControl(key, 'y', 'Y', Math.round(node.y())) +
-      '</div>';
+    let html = sectionHtml('Comum',
+      '<div class="tool-group"><label>Componente</label><input type="text" value="' +
+      escapeHtmlAttr(meta.label + ' / ' + componentType) + '" disabled></div>' +
+      '<div class="tool-row">' +
+        numberControl(key, 'x', 'X', Math.round(node.x())) +
+        numberControl(key, 'y', 'Y', Math.round(node.y())) +
+      '</div>' +
+      '<div class="tool-row">' +
+        numberControl(key, 'zIndex', 'zIndex', meta.zIndex) +
+        numberControl(key, 'rotation', 'Rotacao (deg)', Math.round(node.rotation ? node.rotation() : 0)) +
+      '</div>' +
+      '<div class="tool-row">' +
+        checkboxControl(key, 'visible', 'Visivel', meta.visible) +
+        checkboxControl(key, 'locked', 'Bloqueado', meta.locked) +
+      '</div>'
+    );
 
-    if (componentType === 'badge') html += renderBadgeControls(key, node);
-    else if (componentType === 'shapeLine') html += renderShapeLineControls(key, node);
-    else if (componentType === 'textBox') html += renderTextBoxControls(key, node);
-    else if (componentType === 'overlay') html += renderOverlayControls(key, node);
-    else if (componentType === 'gradientOverlay') html += renderGradientOverlayControls(key, node);
-    else if (componentType === 'image' || componentType === 'logo') html += renderImageControls(key, node);
-    else if (componentType === 'shape') html += renderShapeControls(key, node);
-    else if (componentType === 'lockedImage') html += renderLockedImageControls(key, node);
-    else html += renderImageControls(key, node);
-
-    // Controles comuns no fim: rotation + zIndex
-    html += '<div class="tool-row">' +
-      numberControl(key, 'rotation', 'Rotacao (deg)', Math.round(node.rotation ? node.rotation() : 0)) +
-      numberControl(key, 'zIndex', 'zIndex', meta.zIndex) +
-      '</div>';
+    if (componentType === 'badge') html += sectionHtml('Badge', renderBadgeControls(key, node));
+    else if (componentType === 'shapeLine') html += sectionHtml('Linha', renderShapeLineControls(key, node));
+    else if (componentType === 'textBox') html += sectionHtml('Texto', renderTextBoxControls(key, node));
+    else if (componentType === 'overlay') html += sectionHtml('Forma', renderOverlayControls(key, node));
+    else if (componentType === 'gradientOverlay') html += sectionHtml('Gradiente', renderGradientOverlayControls(key, node));
+    else if (componentType === 'image' || componentType === 'logo') html += sectionHtml('Imagem', renderImageControls(key, node));
+    else if (componentType === 'shape') html += sectionHtml('Forma', renderShapeControls(key, node));
+    else if (componentType === 'lockedImage') html += sectionHtml('Cabecalho', renderLockedImageControls(key, node));
+    else html += sectionHtml('Imagem', renderImageControls(key, node));
 
     document.getElementById('propertiesPanel').innerHTML = html;
   }
@@ -1255,9 +1476,29 @@
   function renderImageControls(key, node) {
     const w = (node.width ? node.width() : 0);
     const h = (node.height ? node.height() : 0);
+    const fitMode = node.getAttr('fitMode') || node.getAttr('objectFit') || 'cover';
+    const focal = node.getAttr('focalPoint') || { x: node.getAttr('focalX'), y: node.getAttr('focalY') };
+    const src = node.getAttr('src') || '';
     return '<div class="tool-row">' + numberControl(key, 'width', 'Largura', Math.round(w)) + numberControl(key, 'height', 'Altura', Math.round(h)) + '</div>' +
-      rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
-      '<div class="tool-group" style="font-size:11px;color:#666;">Para mudar a imagem, importe uma URL no painel ao lado.</div>';
+      textControl(key, 'src', 'Src / URL / Data URL', src) +
+      selectControl(key, 'fitMode', 'Fit', fitMode, ['cover', 'contain', 'fill']) +
+      '<div class="tool-row">' +
+        numberControl(key, 'focalX', 'Focal X (0-1)', clamp01(numOr(node.getAttr('focalX'), focal.x != null ? focal.x : 0.5))) +
+        numberControl(key, 'focalY', 'Focal Y (0-1)', clamp01(numOr(node.getAttr('focalY'), focal.y != null ? focal.y : 0.5))) +
+      '</div>' +
+      '<div class="tool-row">' +
+        numberControl(key, 'zoom', 'Zoom crop', Math.max(0.1, numOr(node.getAttr('zoom'), 1))) +
+        numberControl(key, 'panX', 'Pan X', numOr(node.getAttr('panX'), 0)) +
+      '</div>' +
+      '<div class="tool-row">' +
+        numberControl(key, 'panY', 'Pan Y', numOr(node.getAttr('panY'), 0)) +
+        rangeControl(key, 'opacity', 'Opacidade', node.opacity()) +
+      '</div>' +
+      '<div class="tool-mini-row">' +
+        '<button class="btn-editor" onclick="window.centerImageCrop(\'' + key + '\')" title="Centralizar imagem dentro do quadro">Centralizar</button>' +
+        '<button class="btn-editor" onclick="window.resetImageCrop(\'' + key + '\')" title="Resetar recorte para o padrao">Resetar recorte</button>' +
+      '</div>' +
+      '<div class="keyboard-hint">Use focal, zoom e pan para mover a imagem dentro do quadro sem alterar o tamanho da moldura.</div>';
   }
 
   function renderLockedImageControls(key, node) {
@@ -1291,6 +1532,34 @@
         updateElementList();
         refreshSelectionIndicator();
       }
+      return;
+    }
+    if (prop === 'visible') {
+      const visible = value === true || value === 'true';
+      meta.visible = visible;
+      if (templateData.layers[key]) templateData.layers[key].visible = visible;
+      node.visible(visible);
+      layer.draw();
+      updatePropertiesPanel(key);
+      updateElementList();
+      refreshSelectionIndicator();
+      return;
+    }
+    if (prop === 'locked') {
+      if (FORCED_LOCKED_KEYS.has(key)) {
+        showStatus('Esta camada nao pode ser desbloqueada (' + key + ').', 'info');
+        updatePropertiesPanel(key);
+        return;
+      }
+      const locked = value === true || value === 'true';
+      meta.locked = locked;
+      if (templateData.layers[key]) templateData.layers[key].locked = locked;
+      if (typeof node.draggable === 'function') node.draggable(!locked);
+      if (typeof node.listening === 'function') node.listening(!locked);
+      layer.draw();
+      updatePropertiesPanel(key);
+      updateElementList();
+      refreshSelectionIndicator();
       return;
     }
 
@@ -1374,6 +1643,34 @@
     if (prop === 'x' || prop === 'y') node.setAttr(prop, numOr(value, node.getAttr(prop)));
     else if (prop === 'width') { node.width(Math.max(1, numOr(value, node.width()))); if (node.image && node.image()) applyImageCoverCrop(node, node.image()); }
     else if (prop === 'height') { node.height(Math.max(1, numOr(value, node.height()))); if (node.image && node.image()) applyImageCoverCrop(node, node.image()); }
+    else if (prop === 'fitMode' || prop === 'objectFit') {
+      const mode = String(value || 'cover').toLowerCase();
+      node.setAttr('fitMode', mode);
+      node.setAttr('objectFit', mode);
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+    else if (prop === 'focalX' || prop === 'focalY') {
+      const fp = node.getAttr('focalPoint') || { x: 0.5, y: 0.5 };
+      const next = clamp01(numOr(value, prop === 'focalX' ? fp.x : fp.y));
+      node.setAttr(prop, next);
+      node.setAttr('focalPoint', {
+        x: prop === 'focalX' ? next : clamp01(numOr(node.getAttr('focalX'), fp.x)),
+        y: prop === 'focalY' ? next : clamp01(numOr(node.getAttr('focalY'), fp.y))
+      });
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+    else if (prop === 'zoom') {
+      node.setAttr('zoom', Math.max(0.1, numOr(value, node.getAttr('zoom') || 1)));
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+    else if (prop === 'panX' || prop === 'panY') {
+      node.setAttr(prop, numOr(value, node.getAttr(prop) || 0));
+      if (node.image && node.image()) applyImageCoverCrop(node, node.image());
+    }
+    else if (prop === 'src') {
+      const src = cleanText(value);
+      if (src) setImageSourceForKey(node.id(), src);
+    }
     else if (prop === 'opacity') node.opacity(clamp01(numOr(value, node.opacity())));
   }
 
@@ -1528,6 +1825,12 @@
       height: CANVAS_HEIGHT,
       fitMode: 'cover',
       objectFit: 'cover',
+      focalX: config.focalX == null ? 0.5 : config.focalX,
+      focalY: config.focalY == null ? 0.5 : config.focalY,
+      focalPoint: config.focalPoint || { x: config.focalX == null ? 0.5 : config.focalX, y: config.focalY == null ? 0.5 : config.focalY },
+      zoom: config.zoom == null ? 1 : config.zoom,
+      panX: config.panX == null ? 0 : config.panX,
+      panY: config.panY == null ? 0 : config.panY,
       opacity: 1,
       visible: true,
       locked: false,
@@ -1551,14 +1854,36 @@
     const th = node.height();
     const iw = image.naturalWidth || image.width || tw;
     const ih = image.naturalHeight || image.height || th;
-    const scale = Math.max(tw / iw, th / ih);
+    const fitMode = String(node.getAttr('fitMode') || node.getAttr('objectFit') || 'cover').toLowerCase();
+    if (fitMode === 'fill') {
+      const crop = { x: 0, y: 0, width: iw, height: ih };
+      node.crop(crop);
+      node.setAttr('crop', crop);
+      node.setAttr('fitMode', 'fill');
+      node.setAttr('objectFit', 'fill');
+      return;
+    }
+    if (fitMode === 'contain') {
+      const crop = { x: 0, y: 0, width: iw, height: ih };
+      node.crop(crop);
+      node.setAttr('crop', crop);
+      node.setAttr('fitMode', 'contain');
+      node.setAttr('objectFit', 'contain');
+      return;
+    }
+    const zoom = Math.max(0.1, numOr(node.getAttr('zoom'), 1));
+    const scale = Math.max(tw / iw, th / ih) * zoom;
     const cw = tw / scale;
     const ch = th / scale;
     const focal = node.getAttr('focalPoint') || { x: 0.5, y: 0.5 };
-    const fx = clamp01(numOr(focal.x, 0.5));
-    const fy = clamp01(numOr(focal.y, 0.5));
-    const cropX = Math.max(0, Math.min(iw - cw, (iw - cw) * fx));
-    const cropY = Math.max(0, Math.min(ih - ch, (ih - ch) * fy));
+    const fx = clamp01(numOr(node.getAttr('focalX'), focal.x != null ? focal.x : 0.5));
+    const fy = clamp01(numOr(node.getAttr('focalY'), focal.y != null ? focal.y : 0.5));
+    const panX = numOr(node.getAttr('panX'), 0);
+    const panY = numOr(node.getAttr('panY'), 0);
+    const baseX = (iw - cw) * fx;
+    const baseY = (ih - ch) * fy;
+    const cropX = Math.max(0, Math.min(iw - cw, baseX + panX / scale));
+    const cropY = Math.max(0, Math.min(ih - ch, baseY + panY / scale));
     const crop = {
       x: cropX,
       y: cropY,
@@ -1567,8 +1892,12 @@
     };
     node.crop(crop);
     node.setAttr('crop', crop);
-    node.setAttr('fitMode', node.getAttr('fitMode') || 'cover');
-    node.setAttr('objectFit', node.getAttr('objectFit') || 'cover');
+    node.setAttr('focalX', fx);
+    node.setAttr('focalY', fy);
+    node.setAttr('focalPoint', { x: fx, y: fy });
+    node.setAttr('zoom', zoom);
+    node.setAttr('fitMode', 'cover');
+    node.setAttr('objectFit', 'cover');
   }
 
   function makeBlackTransparentImage(image, crop) {
@@ -1747,6 +2076,12 @@
     target.fitMode = node.getAttr('fitMode') || target.fitMode || 'cover';
     target.objectFit = node.getAttr('objectFit') || target.objectFit || target.fitMode || 'cover';
     target.focalPoint = node.getAttr('focalPoint') || target.focalPoint || { x: 0.5, y: 0.5 };
+    target.focalX = clamp01(numOr(node.getAttr('focalX'), target.focalPoint.x != null ? target.focalPoint.x : 0.5));
+    target.focalY = clamp01(numOr(node.getAttr('focalY'), target.focalPoint.y != null ? target.focalPoint.y : 0.5));
+    target.zoom = Math.max(0.1, numOr(node.getAttr('zoom'), 1));
+    target.panX = numOr(node.getAttr('panX'), 0);
+    target.panY = numOr(node.getAttr('panY'), 0);
+    target.focalPoint = { x: target.focalX, y: target.focalY };
     const crop = node.crop ? node.crop() : node.getAttr('crop');
     if (crop && crop.width && crop.height) {
       target.crop = {
@@ -2072,6 +2407,24 @@
     if (btnPreviewReal) btnPreviewReal.addEventListener('click', generatePreviewReal);
     const btnReset = document.getElementById('btnReset');
     if (btnReset) btnReset.addEventListener('click', resetPositions);
+    const btnUploadImage = document.getElementById('btnUploadImage');
+    const imageUploadInput = document.getElementById('imageUploadInput');
+    if (btnUploadImage && imageUploadInput) {
+      btnUploadImage.addEventListener('click', function () { imageUploadInput.click(); });
+      imageUploadInput.addEventListener('change', handleImageUpload);
+    }
+    const btnAddText = document.getElementById('btnAddText');
+    if (btnAddText) btnAddText.addEventListener('click', addTextLayer);
+    const btnAddImage = document.getElementById('btnAddImage');
+    if (btnAddImage) btnAddImage.addEventListener('click', addImageLayerByUrl);
+    const btnAddGradient = document.getElementById('btnAddGradient');
+    if (btnAddGradient) btnAddGradient.addEventListener('click', addGradientLayer);
+    const btnAddLine = document.getElementById('btnAddLine');
+    if (btnAddLine) btnAddLine.addEventListener('click', addLineLayer);
+    const btnDuplicateSelected = document.getElementById('btnDuplicateSelected');
+    if (btnDuplicateSelected) btnDuplicateSelected.addEventListener('click', duplicateSelectedLayer);
+    const btnDeleteSelected = document.getElementById('btnDeleteSelected');
+    if (btnDeleteSelected) btnDeleteSelected.addEventListener('click', deleteSelectedLayer);
   }
 
   function applyStageScale() {
@@ -2143,6 +2496,13 @@
   }
   function getTextLineHeightPx(node) {
     return Math.round((node.lineHeight ? node.lineHeight() : 1.2) * node.fontSize());
+  }
+  function sectionHtml(title, body) {
+    return '<div class="tool-section"><div class="tool-section-title">' +
+      escapeHtmlText(title) +
+      '</div><div class="tool-section-body">' +
+      (body || '') +
+      '</div></div>';
   }
   function numberControl(key, prop, label, value) {
     return '<div class="tool-group"><label>' + label + '</label><input type="number" value="' +

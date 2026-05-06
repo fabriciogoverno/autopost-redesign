@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Save, RotateCcw, Eye, ExternalLink, Link2 } from 'lucide-react';
+import { Save, RotateCcw, Eye, ExternalLink, Link2, Maximize2, Minimize2 } from 'lucide-react';
 
 const apiBase = '';
 const URURAU_OFFICIAL_RED = '#af0014';
@@ -20,6 +20,7 @@ export default function TemplatesPage() {
   const [categoryColors, setCategoryColors] = useState({ GERAL: URURAU_OFFICIAL_RED });
   const [status, setStatus] = useState({ type: '', message: '' });
   const [editorNonce, setEditorNonce] = useState(Date.now());
+  const [editorExpanded, setEditorExpanded] = useState(false);
 
   const loadTemplateState = useCallback(async () => {
     const res = await fetch(`${apiBase}/api/template`);
@@ -202,18 +203,18 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-up">
+    <div className="space-y-4 animate-fade-up">
       <div className="flex justify-between items-start gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold">Templates</h2>
-          <p className="text-sm text-muted-foreground">
-            Editor visual Konva com persistencia no backend. Arraste elementos com o mouse,
-            edite texto com duplo clique, ajuste com setas (1px) ou Shift+setas (10px).
-          </p>
+          <p className="text-sm text-muted-foreground">Studio visual Konva para editar, importar, salvar e gerar previews do template ativo.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={reloadEditor} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted">
             <RotateCcw size={14} /> Recarregar editor
+          </button>
+          <button onClick={() => setEditorExpanded(true)} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted">
+            <Maximize2 size={14} /> Expandir editor
           </button>
           <a href="/konva-editor.html" target="_blank" rel="noopener noreferrer"
              className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted">
@@ -228,16 +229,24 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <div className="xl:col-span-2 bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <h3 className="font-semibold">Editor visual</h3>
+      <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4 min-h-[calc(100vh-160px)]">
+        <div className={`bg-card border border-border rounded-xl overflow-hidden shadow-sm ${editorExpanded ? 'fixed inset-3 z-50 flex flex-col' : ''}`}>
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3 bg-card">
+            <div>
+              <h3 className="font-semibold">Editor visual</h3>
+              <p className="text-xs text-muted-foreground">Use o painel interno para upload, crop, camadas, preview e salvamento.</p>
+            </div>
             <span className="text-xs text-muted-foreground">
               <Save size={12} className="inline mr-1" />
               Salvar no editor grava em templates/ururau-reels.json
             </span>
+            {editorExpanded && (
+              <button onClick={() => setEditorExpanded(false)} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted">
+                <Minimize2 size={14} /> Sair
+              </button>
+            )}
           </div>
-          <div className="bg-[#0a0a1a]" style={{ height: 'min(85vh, 980px)' }}>
+          <div className="bg-muted/40 flex-1" style={{ height: editorExpanded ? 'auto' : 'calc(100vh - 230px)', minHeight: editorExpanded ? 0 : 760 }}>
             <iframe
               ref={iframeRef}
               src={`/konva-editor.html?v=${editorNonce}`}
@@ -249,7 +258,7 @@ export default function TemplatesPage() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-sm 2xl:sticky 2xl:top-4 self-start max-h-[calc(100vh-120px)] overflow-auto">
           <h3 className="font-semibold flex items-center gap-2">
             <Eye size={16} /> Preview real (com conteudo arbitrario)
           </h3>

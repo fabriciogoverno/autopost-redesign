@@ -639,13 +639,43 @@ ${this.getAileronFontFaceCss()}
 
     async renderSvgImageLayer(layer = {}, src, canvasWidth, canvasHeight, fallback = {}, key = '') {
         if (!src) return '';
-        const dataUrl = await this.imageSourceToDataUrl(src);
+        const imageData = await this.imageSourceToData(src);
+        const dataUrl = imageData.dataUrl;
         const x = this.numberValue(layer.x, fallback.x || 0);
         const y = this.numberValue(layer.y, fallback.y || 0);
         const width = Math.max(1, this.numberValue(layer.width, fallback.width || canvasWidth));
         const height = Math.max(1, this.numberValue(layer.height, fallback.height || canvasHeight));
         const opacity = this.opacityValue(layer.opacity, fallback.opacity ?? 1);
-        return `<image data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${width}" height="${height}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="xMidYMid slice" opacity="${opacity}"/>`;
+        const fitMode = String(layer.fitMode || layer.objectFit || 'cover').toLowerCase();
+        if (fitMode === 'fill') {
+            return `<image data-layer="${this.escapeXmlAttr(key)}" x="${x}" y="${y}" width="${width}" height="${height}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="none" opacity="${opacity}"/>`;
+        }
+
+        const sourceWidth = Math.max(1, this.numberValue(imageData.width, width));
+        const sourceHeight = Math.max(1, this.numberValue(imageData.height, height));
+        const zoom = Math.max(0.1, this.numberValue(layer.zoom, 1));
+        const focalPoint = layer.focalPoint || {};
+        const focalX = Math.max(0, Math.min(1, this.numberValue(layer.focalX, focalPoint.x ?? 0.5)));
+        const focalY = Math.max(0, Math.min(1, this.numberValue(layer.focalY, focalPoint.y ?? 0.5)));
+        const panX = this.numberValue(layer.panX, 0);
+        const panY = this.numberValue(layer.panY, 0);
+        const baseScale = fitMode === 'contain'
+            ? Math.min(width / sourceWidth, height / sourceHeight)
+            : Math.max(width / sourceWidth, height / sourceHeight);
+        const scale = baseScale * zoom;
+        const renderWidth = sourceWidth * scale;
+        const renderHeight = sourceHeight * scale;
+        const renderX = fitMode === 'contain'
+            ? x + (width - renderWidth) * focalX + panX
+            : x - Math.max(0, renderWidth - width) * focalX - panX;
+        const renderY = fitMode === 'contain'
+            ? y + (height - renderHeight) * focalY + panY
+            : y - Math.max(0, renderHeight - height) * focalY - panY;
+        const clipId = `clip_${this.escapeXmlAttr(key || 'image')}_${Math.abs(Math.round(x + y + width + height))}`;
+        return `<g data-layer="${this.escapeXmlAttr(key)}" opacity="${opacity}">
+            <defs><clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${width}" height="${height}"/></clipPath></defs>
+            <image x="${renderX}" y="${renderY}" width="${renderWidth}" height="${renderHeight}" href="${this.escapeXmlAttr(dataUrl)}" preserveAspectRatio="none" clip-path="url(#${clipId})"/>
+        </g>`;
     }
 
     renderOverlaySvg(key, layer = {}) {
@@ -716,9 +746,21 @@ ${this.getAileronFontFaceCss()}
         return 'textBox';
     }
 
-    async imageSourceToDataUrl(src) {
+    async imageSourceToData(src) {
         if (!src) return '';
-        if (/^data:/i.test(src)) return src;
+        if (/^data:/i.test(src)) {
+            const comma = src.indexOf(',');
+            const header = comma >= 0 ? src.slice(0, comma) : '';
+            const body = comma >= 0 ? src.slice(comma + 1) : '';
+            let metadata = {};
+            try {
+                const buffer = Buffer.from(body, /;base64/i.test(header) ? 'base64' : 'utf8');
+                metadata = await sharp(buffer).metadata();
+            } catch {
+                metadata = {};
+            }
+            return { dataUrl: src, width: metadata.width || null, height: metadata.height || null };
+        }
 
         let buffer;
         let mime = this.mimeFromPath(src);
@@ -734,7 +776,18 @@ ${this.getAileronFontFaceCss()}
             mime = this.mimeFromPath(imagePath);
         }
 
-        return `data:${mime};base64,${buffer.toString('base64')}`;
+        let metadata = {};
+        try { metadata = await sharp(buffer).metadata(); } catch { metadata = {}; }
+        return {
+            dataUrl: `data:${mime};base64,${buffer.toString('base64')}`,
+            width: metadata.width || null,
+            height: metadata.height || null
+        };
+    }
+
+    async imageSourceToDataUrl(src) {
+        const imageData = await this.imageSourceToData(src);
+        return imageData.dataUrl || '';
     }
 
     resolveImagePath(src) {
