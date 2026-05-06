@@ -29,6 +29,7 @@
   let layerMeta = {};            // key -> { id, type, zIndex, visible, locked, deletable, label }
   let selectedElement = null;
   let undoStack = [];
+  let copiedElementKey = null;
   let currentScale = 0.5;
   let transformer = null;        // Konva.Transformer global, anexado ao layer
 
@@ -216,13 +217,12 @@
     const scaleSlider = document.getElementById('scaleSlider');
     if (scaleSlider) {
       scaleSlider.addEventListener('input', function (e) {
-        currentScale = parseFloat(e.target.value);
-        applyStageScale();
-        document.getElementById('scaleValue').textContent = Math.round(currentScale * 100) + '%';
+        setCanvasZoom(parseFloat(e.target.value), { center: false });
       });
     }
 
     bindToolbarButtons();
+    window.requestAnimationFrame(function () { fitCanvasToView(); });
   }
 
   // ============================================================
@@ -901,24 +901,51 @@
     return key;
   }
 
-  async function addTextLayer() {
+  async function addTextLayer(preset) {
+    const cfg = preset && typeof preset === 'object' && !preset.preventDefault ? preset : {};
     await addLayerFromConfig('textBox', {
       type: 'textBox',
-      label: 'Novo texto',
-      text: 'Novo texto',
-      x: 120,
-      y: 980,
-      width: 760,
-      maxWidth: 760,
+      label: cfg.label || 'Novo texto',
+      text: cfg.text || 'Novo texto',
+      x: numOr(cfg.x, 120),
+      y: numOr(cfg.y, 980),
+      width: numOr(cfg.width, 760),
+      maxWidth: numOr(cfg.maxWidth || cfg.width, 760),
       fontFamily: DEFAULT_FONT_FAMILY,
-      fontWeight: 'bold',
-      fontSize: 48,
-      lineHeight: 58,
-      color: '#FFFFFF',
+      fontWeight: cfg.fontWeight || 'bold',
+      fontSize: numOr(cfg.fontSize, 48),
+      lineHeight: numOr(cfg.lineHeight, 58),
+      color: cfg.color || '#FFFFFF',
       opacity: 1,
       zIndex: DEFAULT_Z_INDEX.summary + 1
     });
     showStatus('Texto adicionado.', 'success');
+  }
+
+  async function addTextPreset(kind) {
+    if (kind === 'body') {
+      await addTextLayer({
+        label: 'Texto de apoio',
+        text: 'Texto de apoio',
+        x: 120,
+        y: 1320,
+        width: 760,
+        fontWeight: 'normal',
+        fontSize: 30,
+        lineHeight: 40
+      });
+      return;
+    }
+    await addTextLayer({
+      label: 'Titulo editorial',
+      text: 'Titulo editorial',
+      x: 120,
+      y: 1120,
+      width: 780,
+      fontWeight: 'bold',
+      fontSize: 58,
+      lineHeight: 66
+    });
   }
 
   async function addGradientLayer() {
@@ -992,6 +1019,35 @@
   function deleteSelectedLayer() {
     if (!selectedElement) { showStatus('Selecione uma camada para apagar.', 'info'); return; }
     deleteLayer(selectedElement);
+  }
+
+  function copySelectedLayer() {
+    if (!selectedElement || !konvaElements[selectedElement]) {
+      showStatus('Selecione uma camada para copiar.', 'info');
+      return;
+    }
+    copiedElementKey = selectedElement;
+    showStatus('Camada copiada. Use Ctrl+V ou Colar.', 'success');
+  }
+
+  function pasteCopiedLayer() {
+    if (!copiedElementKey || !konvaElements[copiedElementKey]) {
+      showStatus('Nenhuma camada copiada para colar.', 'info');
+      return;
+    }
+    duplicateLayer(copiedElementKey);
+  }
+
+  function setSelectedOpacity(value) {
+    const node = getSelectedEditableNode();
+    if (!node) return;
+    saveUndo();
+    node.opacity(clamp01(numOr(value, node.opacity())));
+    layer.draw();
+    updateElementList();
+    updatePropertiesPanel(selectedElement);
+    refreshSelectionIndicator();
+    showStatus('Transparencia aplicada.', 'success');
   }
 
   function selectedImageKey() {
@@ -1327,10 +1383,10 @@
           '</span>' +
         '</div>' +
         '<div class="element-quick" onclick="event.stopPropagation()">' +
-          '<button class="layer-icon-btn" title="Mostrar/Ocultar camada" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + (meta.visible ? 'Ver' : 'Oc') + '</button>' +
-          '<button class="layer-icon-btn" title="Bloquear/Desbloquear camada" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + (meta.locked ? 'Lock' : 'Free') + '</button>' +
+          '<button class="layer-icon-btn" title="Mostrar/Ocultar camada" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + (meta.visible ? 'Visivel' : 'Oculta') + '</button>' +
+          '<button class="layer-icon-btn" title="Bloquear/Desbloquear camada" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + (meta.locked ? 'Bloq.' : 'Livre') + '</button>' +
           '<details class="element-actions-menu">' +
-            '<summary title="Mais acoes da camada">...</summary>' +
+            '<summary title="Mais acoes da camada">Acoes</summary>' +
             '<div class="layer-menu">' +
               '<button title="Subir camada" onclick="window.layerCmd(\'up\', \'' + key + '\')">Subir</button>' +
               '<button title="Descer camada" onclick="window.layerCmd(\'down\', \'' + key + '\')">Descer</button>' +
@@ -1344,6 +1400,255 @@
       '</div>';
     });
     list.innerHTML = html;
+    updateTimelinePanel(ordered);
+    updateEditorChrome();
+  }
+
+  function updateTimelinePanel(orderedKeys) {
+    const tracks = document.getElementById('timelineTracks');
+    if (!tracks) return;
+    const ordered = orderedKeys || Object.keys(layerMeta)
+      .filter(function (k) { return konvaElements[k]; })
+      .sort(function (a, b) { return layerMeta[b].zIndex - layerMeta[a].zIndex; });
+    let html = '';
+    ordered.forEach(function (key) {
+      const meta = layerMeta[key];
+      if (!meta) return;
+      const active = selectedElement === key ? ' active' : '';
+      const hidden = meta.visible ? '' : ' hidden';
+      const locked = meta.locked ? ' locked' : '';
+      const duration = Math.max(10, Math.min(100, 22 + (meta.zIndex || 0) * 0.55));
+      const typeBadge = timelineTypeBadge(meta.type);
+      html += '<div class="timeline-track' + active + hidden + locked + '" data-type="' + escapeHtmlAttr(meta.type) + '" onclick="selectElementFromTimeline(\'' + key + '\')">' +
+        '<div class="timeline-name" title="' + escapeHtmlAttr(meta.label) + '">' +
+          '<span class="timeline-type">' + escapeHtmlText(typeBadge) + '</span>' +
+          '<span>' + (meta.locked ? 'Lock ' : '') + escapeHtmlText(meta.label) + '</span>' +
+        '</div>' +
+        '<div class="timeline-lane"><div class="timeline-bar" style="width:' + duration + '%"></div></div>' +
+        '<div class="timeline-track-actions" onclick="event.stopPropagation()">' +
+          '<button title="Mostrar/Ocultar" onclick="window.layerCmd(\'visible\', \'' + key + '\')">' + (meta.visible ? 'Ver' : 'Oc') + '</button>' +
+          '<button title="Bloquear/Desbloquear" onclick="window.layerCmd(\'lock\', \'' + key + '\')">' + (meta.locked ? 'Lock' : 'Livre') + '</button>' +
+          '<button title="Duplicar" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')">Dup</button>' +
+          '<button title="Apagar" ' + (meta.deletable ? '' : 'disabled ') + 'onclick="window.layerCmd(\'delete\', \'' + key + '\')">Del</button>' +
+        '</div>' +
+      '</div>';
+    });
+    tracks.innerHTML = html || '<div class="keyboard-hint">Nenhuma camada disponivel.</div>';
+  }
+
+  function timelineTypeBadge(type) {
+    if (type === 'textBox') return 'T';
+    if (type === 'badge') return 'B';
+    if (type === 'image' || type === 'logo' || type === 'lockedImage') return 'I';
+    if (type === 'gradientOverlay' || type === 'overlay') return 'G';
+    if (type === 'shapeLine') return 'L';
+    if (type === 'shape') return 'F';
+    return '?';
+  }
+
+  function updateEditorChrome() {
+    const meta = selectedElement ? layerMeta[selectedElement] : null;
+    const node = selectedElement ? konvaElements[selectedElement] : null;
+    const contextSelection = document.getElementById('contextSelection');
+    const floatingSelectionBar = document.getElementById('floatingSelectionBar');
+    const contextTypeTools = document.getElementById('contextTypeTools');
+    if (contextSelection) {
+      contextSelection.textContent = meta ? (meta.label + ' · ' + visualLayerType(meta.type)) : 'Nenhuma camada selecionada';
+    }
+    if (contextTypeTools) {
+      contextTypeTools.innerHTML = meta && node ? renderContextTypeTools(selectedElement, node, meta) : '';
+    }
+    if (floatingSelectionBar) {
+      floatingSelectionBar.classList.toggle('visible', !!meta);
+    }
+    const lockText = meta && meta.locked ? 'Desbloquear' : 'Bloquear';
+    ['contextLock', 'floatLock'].forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.textContent = id === 'floatLock' ? (meta && meta.locked ? 'Livre' : 'Lock') : lockText;
+    });
+    ['contextDelete', 'floatDelete'].forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = !meta || !meta.deletable;
+    });
+    ['contextDuplicate', 'contextLock', 'contextBack', 'contextFront', 'floatDuplicate', 'floatLock', 'floatFront'].forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = !meta;
+    });
+  }
+
+  function updateWorkspaceViewButtons() {
+    const shell = document.querySelector('.studio-shell');
+    if (!shell) return;
+    const leftCollapsed = shell.classList.contains('left-collapsed') || shell.classList.contains('focus-mode');
+    const rightCollapsed = shell.classList.contains('right-collapsed') || shell.classList.contains('focus-mode');
+    const focusMode = shell.classList.contains('focus-mode');
+    const layersBtn = document.getElementById('btnToggleLayers');
+    const propertiesBtn = document.getElementById('btnToggleProperties');
+    const focusBtn = document.getElementById('btnFocusStudio');
+    if (layersBtn) {
+      layersBtn.textContent = leftCollapsed ? 'Mostrar camadas' : 'Ocultar camadas';
+      layersBtn.classList.toggle('active', leftCollapsed);
+    }
+    if (propertiesBtn) {
+      propertiesBtn.textContent = rightCollapsed ? 'Mostrar propriedades' : 'Ocultar propriedades';
+      propertiesBtn.classList.toggle('active', rightCollapsed);
+    }
+    if (focusBtn) {
+      focusBtn.textContent = focusMode ? 'Sair do foco' : 'Modo foco';
+      focusBtn.classList.toggle('active', focusMode);
+    }
+  }
+
+  function afterWorkspaceLayoutChange() {
+    updateWorkspaceViewButtons();
+    window.requestAnimationFrame(function () {
+      fitCanvasToView();
+      centerCanvasInView();
+    });
+  }
+
+  function toggleWorkspacePanel(panel) {
+    const shell = document.querySelector('.studio-shell');
+    if (!shell) return;
+    shell.classList.remove('focus-mode');
+    if (panel === 'layers') shell.classList.toggle('left-collapsed');
+    if (panel === 'properties') shell.classList.toggle('right-collapsed');
+    afterWorkspaceLayoutChange();
+  }
+
+  function toggleFocusMode() {
+    const shell = document.querySelector('.studio-shell');
+    if (!shell) return;
+    const nextFocus = !shell.classList.contains('focus-mode');
+    shell.classList.toggle('focus-mode', nextFocus);
+    if (!nextFocus) {
+      shell.classList.remove('left-collapsed');
+      shell.classList.remove('right-collapsed');
+    }
+    afterWorkspaceLayoutChange();
+  }
+
+  function setShortcutHelp(open) {
+    const modal = document.getElementById('shortcutModal');
+    if (!modal) return;
+    modal.classList.toggle('open', !!open);
+    modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+  }
+
+  function toggleShortcutHelp() {
+    const modal = document.getElementById('shortcutModal');
+    setShortcutHelp(!(modal && modal.classList.contains('open')));
+  }
+
+  function getSelectedEditableNode() {
+    if (!selectedElement) {
+      showStatus('Selecione uma camada para usar esta ferramenta.', 'info');
+      return null;
+    }
+    const node = konvaElements[selectedElement];
+    const meta = layerMeta[selectedElement];
+    if (!node || !meta) return null;
+    if (meta.locked) {
+      showStatus('A camada selecionada esta bloqueada.', 'info');
+      return null;
+    }
+    return node;
+  }
+
+  function alignSelectedLayer(mode) {
+    const node = getSelectedEditableNode();
+    if (!node || !layer) return;
+    const box = node.getClientRect({ relativeTo: layer, skipStroke: false, skipShadow: true });
+    if (!box || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return;
+    let dx = 0;
+    let dy = 0;
+    if (mode === 'left') dx = -box.x;
+    if (mode === 'centerH') dx = (CANVAS_WIDTH - box.width) / 2 - box.x;
+    if (mode === 'right') dx = CANVAS_WIDTH - (box.x + box.width);
+    if (mode === 'top') dy = -box.y;
+    if (mode === 'centerV') dy = (CANVAS_HEIGHT - box.height) / 2 - box.y;
+    if (mode === 'bottom') dy = CANVAS_HEIGHT - (box.y + box.height);
+    saveUndo();
+    node.x(Math.round(node.x() + dx));
+    node.y(Math.round(node.y() + dy));
+    layer.draw();
+    updateElementList();
+    updatePropertiesPanel(selectedElement);
+    refreshSelectionIndicator();
+    showStatus('Camada alinhada.', 'success');
+  }
+
+  function renderContextTypeTools(key, node, meta) {
+    if (meta.type === 'textBox') {
+      return contextSelect(key, 'fontWeight', 'Peso', node.fontStyle() || 'normal', ['normal', 'bold']) +
+        contextNumber(key, 'fontSize', 'Fonte', node.fontSize(), 1) +
+        contextColor(key, 'color', 'Cor', node.fill()) +
+        contextNumber(key, 'lineHeightPx', 'Linha', getTextLineHeightPx(node), 1);
+    }
+    if (meta.type === 'badge') {
+      const bg = node.findOne('.badge-bg');
+      const text = node.findOne('.badge-text');
+      return contextColor(key, 'background', 'Fundo', bg ? bg.fill() : URURAU_OFFICIAL_RED) +
+        contextColor(key, 'textColor', 'Texto', text ? text.fill() : '#ffffff') +
+        contextNumber(key, 'fontSize', 'Fonte', text ? text.fontSize() : 22, 1) +
+        contextSelect(key, 'autoWidth', 'Auto', node.getAttr('autoWidth') !== false ? 'true' : 'false', ['true', 'false']);
+    }
+    if (meta.type === 'image' || meta.type === 'logo') {
+      return contextSelect(key, 'fitMode', 'Fit', node.getAttr('fitMode') || node.getAttr('objectFit') || 'cover', ['cover', 'contain', 'fill']) +
+        contextNumber(key, 'zoom', 'Zoom', Math.max(0.1, numOr(node.getAttr('zoom'), 1)), 0.1) +
+        contextNumber(key, 'panX', 'Pan X', numOr(node.getAttr('panX'), 0), 1) +
+        contextNumber(key, 'panY', 'Pan Y', numOr(node.getAttr('panY'), 0), 1) +
+        '<button class="context-button" onclick="window.centerImageCrop(\'' + key + '\')" title="Centralizar imagem selecionada">Centralizar</button>';
+    }
+    if (meta.type === 'gradientOverlay') {
+      return contextNumber(key, 'angle', 'Angulo', Math.round(numOr(node.getAttr('angle'), 90)), 1) +
+        contextRange(key, 'opacity', 'Opacidade', node.opacity()) +
+        '<button class="context-button" onclick="window.addGradientStop(\'' + key + '\')" title="Adicionar color stop">+ stop</button>';
+    }
+    if (meta.type === 'shapeLine') {
+      const visible = node.findOne('.separator-visible') || node;
+      return contextColor(key, 'color', 'Cor', visible.fill()) +
+        contextNumber(key, 'width', 'Largura', Math.round(visible.width()), 1) +
+        contextRange(key, 'opacity', 'Opacidade', node.opacity());
+    }
+    if (meta.type === 'overlay' || meta.type === 'shape') {
+      return contextColor(key, 'color', 'Cor', node.fill ? node.fill() : '#000000') +
+        contextRange(key, 'opacity', 'Opacidade', node.opacity()) +
+        contextNumber(key, 'borderRadius', 'Raio', node.cornerRadius ? node.cornerRadius() : 0, 1);
+    }
+    if (meta.type === 'lockedImage') {
+      return contextRange(key, 'opacity', 'Opacidade', node.opacity());
+    }
+    return '';
+  }
+
+  function contextNumber(key, prop, label, value, step) {
+    return '<label class="context-field">' + escapeHtmlText(label) +
+      '<input type="number" step="' + escapeHtmlAttr(step || 1) + '" value="' + escapeHtmlAttr(value) + '" onchange="window.updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">' +
+      '</label>';
+  }
+
+  function contextRange(key, prop, label, value) {
+    return '<label class="context-field">' + escapeHtmlText(label) +
+      '<input type="range" min="0" max="1" step="0.05" value="' + escapeHtmlAttr(clamp01(numOr(value, 1))) + '" oninput="window.updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">' +
+      '</label>';
+  }
+
+  function contextColor(key, prop, label, value) {
+    const color = isHexColor(value) ? value : '#000000';
+    return '<label class="context-field">' + escapeHtmlText(label) +
+      '<input type="color" value="' + escapeHtmlAttr(color) + '" onchange="window.updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">' +
+      '</label>';
+  }
+
+  function contextSelect(key, prop, label, value, options) {
+    let html = '<label class="context-field">' + escapeHtmlText(label) +
+      '<select onchange="window.updateNodePropFromInput(\'' + key + '\', \'' + prop + '\', this.value)">';
+    options.forEach(function (option) {
+      html += '<option value="' + escapeHtmlAttr(option) + '"' + (String(option) === String(value) ? ' selected' : '') + '>' + escapeHtmlText(option) + '</option>';
+    });
+    html += '</select></label>';
+    return html;
   }
 
   window.layerCmd = function (cmd, key) {
@@ -1356,6 +1661,7 @@
     else if (cmd === 'duplicate') duplicateLayer(key);
     else if (cmd === 'delete') deleteLayer(key);
   };
+  window.selectElementFromTimeline = selectElement;
 
   // ============================================================
   // PAINEL DE PROPRIEDADES
@@ -1365,7 +1671,7 @@
     const meta = layerMeta[key];
     if (!node || !meta) return;
     const componentType = meta.type;
-    let html = sectionHtml('Comum',
+    let commonHtml = sectionHtml('Comum',
       '<div class="tool-group"><label>Componente</label><input type="text" value="' +
       escapeHtmlAttr(meta.label + ' / ' + componentType) + '" disabled></div>' +
       '<div class="tool-row">' +
@@ -1382,17 +1688,82 @@
       '</div>'
     );
 
-    if (componentType === 'badge') html += sectionHtml('Badge', renderBadgeControls(key, node));
-    else if (componentType === 'shapeLine') html += sectionHtml('Linha', renderShapeLineControls(key, node));
-    else if (componentType === 'textBox') html += sectionHtml('Texto', renderTextBoxControls(key, node));
-    else if (componentType === 'overlay') html += sectionHtml('Forma', renderOverlayControls(key, node));
-    else if (componentType === 'gradientOverlay') html += sectionHtml('Gradiente', renderGradientOverlayControls(key, node));
-    else if (componentType === 'image' || componentType === 'logo') html += sectionHtml('Imagem', renderImageControls(key, node));
-    else if (componentType === 'shape') html += sectionHtml('Forma', renderShapeControls(key, node));
-    else if (componentType === 'lockedImage') html += sectionHtml('Cabecalho', renderLockedImageControls(key, node));
-    else html += sectionHtml('Imagem', renderImageControls(key, node));
+    let specificTitle = 'Visual';
+    let specificBody = '';
+    if (componentType === 'badge') { specificTitle = 'Badge'; specificBody = renderBadgeControls(key, node); }
+    else if (componentType === 'shapeLine') { specificTitle = 'Linha'; specificBody = renderShapeLineControls(key, node); }
+    else if (componentType === 'textBox') { specificTitle = 'Texto'; specificBody = renderTextBoxControls(key, node); }
+    else if (componentType === 'overlay') { specificTitle = 'Forma'; specificBody = renderOverlayControls(key, node); }
+    else if (componentType === 'gradientOverlay') { specificTitle = 'Gradiente'; specificBody = renderGradientOverlayControls(key, node); }
+    else if (componentType === 'image' || componentType === 'logo') { specificTitle = 'Imagem'; specificBody = renderImageControls(key, node); }
+    else if (componentType === 'shape') { specificTitle = 'Forma'; specificBody = renderShapeControls(key, node); }
+    else if (componentType === 'lockedImage') { specificTitle = 'Cabecalho'; specificBody = renderLockedImageControls(key, node); }
+    else { specificTitle = 'Imagem'; specificBody = renderImageControls(key, node); }
 
+    const html = renderPropertySummary(key, node, meta) +
+      '<div class="property-tabs" role="tablist">' +
+        '<button class="property-tab active" type="button" data-property-tab="common">Ajustes</button>' +
+        '<button class="property-tab" type="button" data-property-tab="specific">' + escapeHtmlText(specificTitle) + '</button>' +
+        '<button class="property-tab" type="button" data-property-tab="advanced">Avancado</button>' +
+      '</div>' +
+      '<div class="property-view active" data-property-view="common">' + commonHtml + '</div>' +
+      '<div class="property-view" data-property-view="specific">' + sectionHtml(specificTitle, specificBody) + '</div>' +
+      '<div class="property-view" data-property-view="advanced">' +
+        sectionHtml('Camada', renderAdvancedLayerControls(key, node, meta)) +
+      '</div>';
     document.getElementById('propertiesPanel').innerHTML = html;
+    setupPropertyTabs();
+  }
+
+  function renderPropertySummary(key, node, meta) {
+    const box = node && node.getClientRect ? node.getClientRect({ relativeTo: layer }) : null;
+    const size = box ? Math.round(box.width) + 'x' + Math.round(box.height) : Math.round(node.width ? node.width() : 0) + 'x' + Math.round(node.height ? node.height() : 0);
+    return '<div class="property-summary">' +
+      '<div class="property-summary-main">' +
+        '<div class="property-summary-title" title="' + escapeHtmlAttr(meta.label) + '">' + escapeHtmlText(meta.label) + '</div>' +
+        '<div class="property-summary-type">' + escapeHtmlText(visualLayerType(meta.type)) + '</div>' +
+      '</div>' +
+      '<div class="property-summary-meta">' +
+        '<span class="el-pill">ID: ' + escapeHtmlText(key) + '</span>' +
+        '<span class="el-pill">Z ' + escapeHtmlText(meta.zIndex) + '</span>' +
+        '<span class="el-pill">' + (meta.visible ? 'Visivel' : 'Oculta') + '</span>' +
+        '<span class="el-pill">' + (meta.locked ? 'Bloqueada' : 'Livre') + '</span>' +
+        '<span class="el-pill">' + escapeHtmlText(size) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderAdvancedLayerControls(key, node, meta) {
+    return '<div class="tool-row">' +
+        numberControl(key, 'zIndex', 'zIndex', meta.zIndex) +
+        numberControl(key, 'rotation', 'Rotacao (deg)', Math.round(node.rotation ? node.rotation() : 0)) +
+      '</div>' +
+      '<div class="tool-row">' +
+        checkboxControl(key, 'visible', 'Visivel', meta.visible) +
+        checkboxControl(key, 'locked', 'Bloqueado', meta.locked) +
+      '</div>' +
+      '<div class="tool-mini-row">' +
+        '<button class="btn-editor" onclick="window.layerCmd(\'front\', \'' + key + '\')" type="button">Frente</button>' +
+        '<button class="btn-editor" onclick="window.layerCmd(\'back\', \'' + key + '\')" type="button">Tras</button>' +
+      '</div>' +
+      '<div class="tool-mini-row">' +
+        '<button class="btn-editor" onclick="window.layerCmd(\'duplicate\', \'' + key + '\')" type="button">Duplicar</button>' +
+        '<button class="btn-editor danger" ' + (meta.deletable ? '' : 'disabled ') + 'onclick="window.layerCmd(\'delete\', \'' + key + '\')" type="button">Apagar</button>' +
+      '</div>';
+  }
+
+  function setupPropertyTabs() {
+    const tabs = Array.prototype.slice.call(document.querySelectorAll('[data-property-tab]'));
+    const views = Array.prototype.slice.call(document.querySelectorAll('[data-property-view]'));
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        const target = tab.getAttribute('data-property-tab');
+        tabs.forEach(function (item) { item.classList.toggle('active', item === tab); });
+        views.forEach(function (view) {
+          view.classList.toggle('active', view.getAttribute('data-property-view') === target);
+        });
+      });
+    });
   }
 
   function renderBadgeControls(key, node) {
@@ -1808,6 +2179,10 @@
       showStatus('Informe uma URL de materia para extrair.', 'error');
       return;
     }
+    if (isCanvaTemplateUrl(url)) {
+      await analyzeCanvaTemplateLink(url);
+      return;
+    }
     showStatus('Extraindo dados da materia...', 'info');
     try {
       const res = await fetch('/api/template/scrape', {
@@ -1962,13 +2337,315 @@
     return String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
   }
 
+  function isCanvaTemplateUrl(value) {
+    try {
+      const url = new URL(String(value || '').trim());
+      return url.hostname === 'canva.link' || url.hostname === 'canva.com' || url.hostname === 'www.canva.com';
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async function analyzeCanvaTemplateLink(sourceValue) {
+    const input = document.getElementById('canvaTemplateUrlInput');
+    const fallback = document.getElementById('articleUrlInput');
+    const resultBox = document.getElementById('canvaImportResult');
+    const url = cleanText(sourceValue || (input && input.value) || (fallback && fallback.value));
+    if (!url) {
+      showStatus('Cole um link do Canva para analisar.', 'error');
+      return;
+    }
+    if (!isCanvaTemplateUrl(url)) {
+      showStatus('Informe um link canva.link ou canva.com/design.', 'error');
+      return;
+    }
+    if (input) input.value = url;
+    showStatus('Analisando link do Canva...', 'info');
+    try {
+      const res = await fetch('/api/canva/link-info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.success) {
+        showStatus(data.error || 'Falha ao analisar link do Canva.', 'error');
+        return;
+      }
+      templateData.integrations = {
+        ...(templateData.integrations || {}),
+        canva: {
+          sourceUrl: data.inputUrl || url,
+          finalUrl: data.finalUrl || url,
+          designId: data.designId || '',
+          templateId: data.templateId || data.designId || '',
+          useTemplateUrl: data.useTemplateUrl || '',
+          editableImport: false
+        }
+      };
+      if (resultBox) {
+        renderCanvaImportResult(
+          '<strong>Link Canva reconhecido.</strong><br>' +
+          (data.designId ? 'Template ID: <code>' + escapeHtmlText(data.designId) + '</code><br>' : '') +
+          (data.useTemplateUrl
+            ? '<a href="' + escapeHtmlAttr(data.useTemplateUrl) + '" target="_blank" rel="noopener noreferrer">Abrir como modelo editavel no Canva</a><br>'
+            : '<a href="' + escapeHtmlAttr(data.finalUrl || url) + '" target="_blank" rel="noopener noreferrer">Abrir no Canva</a><br>') +
+          'Para trazer tudo editavel para o Konva, cole o JSON do Canva Bridge abaixo e importe.',
+          'info'
+        );
+      }
+      showStatus(data.useTemplateUrl ? 'Modelo Canva pronto para abrir como copia editavel.' : 'Link Canva analisado.', 'info');
+    } catch (err) {
+      showStatus('Erro ao analisar link do Canva: ' + (err.message || 'falha desconhecida'), 'error');
+    }
+  }
+
+  function renderCanvaImportResult(message, kind) {
+    const resultBox = document.getElementById('canvaImportResult');
+    if (!resultBox) return;
+    resultBox.classList.add('open');
+    resultBox.style.background = kind === 'error' ? '#fff1f3' : '#eff4ff';
+    resultBox.style.borderColor = kind === 'error' ? '#fecdd3' : '#c7d7fe';
+    resultBox.style.color = kind === 'error' ? '#9f1239' : '#3538cd';
+    resultBox.innerHTML = message;
+  }
+
+  function readCanvaSnapshotInput() {
+    const input = document.getElementById('canvaSnapshotInput');
+    const raw = String(input && input.value ? input.value : '').trim();
+    if (!raw) throw new Error('Cole o JSON do Canva Bridge antes de importar.');
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      throw new Error('JSON do Canva Bridge invalido: ' + (err.message || 'erro de parse'));
+    }
+  }
+
+  function fillCanvaSnapshotExample() {
+    const input = document.getElementById('canvaSnapshotInput');
+    if (!input) return;
+    const linkInput = document.getElementById('canvaTemplateUrlInput');
+    const canvaInfo = templateData?.integrations?.canva || {};
+    input.value = JSON.stringify({
+      sourceUrl: (linkInput && linkInput.value) || canvaInfo.sourceUrl || 'https://canva.link/vlmy2uc778suvx3',
+      designId: canvaInfo.designId || canvaInfo.templateId || 'DAHIBnrQXjM',
+      canvas: { width: 1080, height: 1920 },
+      elements: [
+        {
+          id: 'canva_gradient_bottom',
+          type: 'gradient',
+          label: 'Gradiente importado do Canva',
+          x: 0,
+          y: 980,
+          width: 1080,
+          height: 660,
+          angle: 90,
+          opacity: 0.86,
+          zIndex: 28,
+          colorStops: [
+            { offset: 0, color: 'rgba(0,0,0,0)' },
+            { offset: 1, color: 'rgba(0,0,0,0.92)' }
+          ]
+        },
+        {
+          id: 'canva_badge',
+          type: 'text',
+          role: 'badge',
+          label: 'Categoria Canva',
+          text: 'OPINIAO',
+          x: 120,
+          y: 1180,
+          width: 180,
+          height: 48,
+          fontSize: 28,
+          fontWeight: 'bold',
+          color: '#FFFFFF',
+          background: '#af0014',
+          zIndex: 42
+        },
+        {
+          id: 'canva_title',
+          type: 'text',
+          role: 'title',
+          label: 'Titulo Canva',
+          text: 'Titulo importado como camada editavel',
+          x: 120,
+          y: 1248,
+          width: 760,
+          height: 180,
+          fontSize: 56,
+          fontWeight: 'bold',
+          color: '#FFFFFF',
+          lineHeight: 64,
+          zIndex: 52
+        },
+        {
+          id: 'canva_separator',
+          type: 'line',
+          label: 'Linha Canva',
+          x: 120,
+          y: 1480,
+          width: 240,
+          height: 7,
+          color: '#c11f25',
+          zIndex: 56
+        }
+      ]
+    }, null, 2);
+    renderCanvaImportResult('Exemplo carregado. Clique em <strong>Validar</strong> para testar sem salvar, ou <strong>Importar</strong> para criar camadas editaveis.', 'info');
+  }
+
+  async function importCanvaBridgeSnapshot(dryRun) {
+    let snapshot;
+    try {
+      snapshot = readCanvaSnapshotInput();
+    } catch (err) {
+      renderCanvaImportResult(escapeHtmlText(err.message), 'error');
+      showStatus(err.message, 'error');
+      return;
+    }
+    const linkInput = document.getElementById('canvaTemplateUrlInput');
+    const sourceUrl = cleanText((linkInput && linkInput.value) || snapshot.sourceUrl || '');
+    showStatus(dryRun ? 'Validando snapshot Canva...' : 'Importando camadas Canva...', 'info');
+    try {
+      const res = await fetch('/api/canva/import-snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snapshot,
+          sourceUrl,
+          dryRun: !!dryRun,
+          replaceCanvaImport: true
+        })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.success) {
+        const message = data.error || 'Falha ao importar snapshot Canva.';
+        renderCanvaImportResult(escapeHtmlText(message), 'error');
+        showStatus(message, 'error');
+        return;
+      }
+      const importedCount = (data.imported || []).length;
+      const unsupportedCount = (data.unsupported || []).length;
+      const unsupportedHtml = unsupportedCount
+        ? '<br><small>Sem conversao direta: ' + escapeHtmlText(data.unsupported.map(function (item) { return item.type || item.id; }).join(', ')) + '</small>'
+        : '';
+      renderCanvaImportResult(
+        '<strong>' + (dryRun ? 'Snapshot valido.' : 'Snapshot importado.') + '</strong><br>' +
+        'Camadas editaveis: ' + importedCount + '<br>' +
+        'Itens nao mapeados: ' + unsupportedCount +
+        unsupportedHtml,
+        'info'
+      );
+      if (!dryRun && data.template) {
+        saveUndo();
+        await restoreEditorSnapshot(data.template);
+        notifyTemplateSaved(templateData);
+        showStatus('Camadas Canva importadas para o Template Studio.', 'success');
+      } else {
+        showStatus('Snapshot Canva validado: ' + importedCount + ' camadas editaveis.', 'success');
+      }
+    } catch (err) {
+      renderCanvaImportResult('Erro ao chamar bridge Canva: ' + escapeHtmlText(err.message || 'falha desconhecida'), 'error');
+      showStatus('Erro ao chamar bridge Canva.', 'error');
+    }
+  }
+
   // ============================================================
   // TECLADO
   // ============================================================
+  function isTypingTarget(target) {
+    const tag = (target && target.tagName) || '';
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!(target && target.isContentEditable);
+  }
+
   function setupKeyboard() {
     document.addEventListener('keydown', function (e) {
-      const tag = (e.target && e.target.tagName) || '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const key = String(e.key || '').toLowerCase();
+      const typing = isTypingTarget(e.target);
+      const commandKey = e.ctrlKey || e.metaKey;
+      const shortcutModal = document.getElementById('shortcutModal');
+      const shortcutsOpen = !!(shortcutModal && shortcutModal.classList.contains('open'));
+      if (e.key === 'Escape' && shortcutsOpen) {
+        e.preventDefault();
+        setShortcutHelp(false);
+        return;
+      }
+      if (!typing && (e.key === 'F1' || (!commandKey && !e.altKey && !e.shiftKey && e.key === '?'))) {
+        e.preventDefault();
+        toggleShortcutHelp();
+        return;
+      }
+      if (shortcutsOpen) return;
+      if (e.altKey && e.shiftKey && !commandKey) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); alignSelectedLayer('left'); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); alignSelectedLayer('right'); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); alignSelectedLayer('top'); return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); alignSelectedLayer('bottom'); return; }
+        if (key === 'c') { e.preventDefault(); alignSelectedLayer('centerH'); return; }
+        if (key === 'm') { e.preventDefault(); alignSelectedLayer('centerV'); return; }
+      }
+      if (commandKey && !e.shiftKey && key === 'z') {
+        e.preventDefault();
+        undoLastAction();
+        return;
+      }
+      if (commandKey && !e.shiftKey && key === 's') {
+        e.preventDefault();
+        saveFromEditor();
+        return;
+      }
+      if (typing) return;
+      if (commandKey && !e.shiftKey && key === 'c') {
+        e.preventDefault();
+        copySelectedLayer();
+        return;
+      }
+      if (commandKey && !e.shiftKey && key === 'v') {
+        e.preventDefault();
+        pasteCopiedLayer();
+        return;
+      }
+      if (commandKey && !e.shiftKey && key === 'd') {
+        e.preventDefault();
+        duplicateSelectedLayer();
+        return;
+      }
+      if (e.altKey && !commandKey && !e.shiftKey) {
+        if (key === 'p') { e.preventDefault(); generatePreviewKonva(); return; }
+        if (key === 'r') { e.preventDefault(); generatePreviewReal(); return; }
+        if (key === 'c') { e.preventDefault(); toggleWorkspacePanel('layers'); return; }
+        if (key === 'o') { e.preventDefault(); toggleWorkspacePanel('properties'); return; }
+        if (key === 'f') { e.preventDefault(); toggleFocusMode(); return; }
+        if (key === '1') { e.preventDefault(); setSelectedOpacity(1); return; }
+        if (key === '2') { e.preventDefault(); setSelectedOpacity(0.75); return; }
+        if (key === '3') { e.preventDefault(); setSelectedOpacity(0.5); return; }
+      }
+      if (!commandKey && !e.altKey && !e.shiftKey) {
+        if (key === 't') { e.preventDefault(); addTextLayer(); return; }
+        if (key === 'i') { e.preventDefault(); addImageLayerByUrl(); return; }
+        if (key === 'g') { e.preventDefault(); addGradientLayer(); return; }
+        if (key === 'l') { e.preventDefault(); addLineLayer(); return; }
+        if (key === 'u') {
+          const upload = document.getElementById('imageUploadInput');
+          if (upload) { e.preventDefault(); upload.click(); return; }
+        }
+        if (key === 'delete' || key === 'backspace') {
+          e.preventDefault();
+          deleteSelectedLayer();
+          return;
+        }
+      }
+      if (commandKey && !e.shiftKey && key === '0') {
+        e.preventDefault();
+        fitCanvasToView();
+        return;
+      }
+      if (commandKey && !e.shiftKey && key === '1') {
+        e.preventDefault();
+        setCanvasZoom(1, { center: true });
+        return;
+      }
       if (!selectedElement) return;
       const node = konvaElements[selectedElement];
       const meta = layerMeta[selectedElement];
@@ -1991,14 +2668,54 @@
   }
 
   function saveUndo() {
-    const state = {};
-    Object.keys(konvaElements).forEach(function (k) {
-      const n = konvaElements[k];
-      state[k] = { x: n.x(), y: n.y(), opacity: n.opacity(), visible: n.visible() };
-      if (n.getClassName() === 'Text') state[k].text = n.text();
-    });
-    undoStack.push(state);
+    if (!templateData || !layer) return;
+    try {
+      const snapshot = buildTemplateSnapshot(true);
+      if (!snapshot) return;
+      undoStack.push(JSON.parse(JSON.stringify(snapshot)));
+    } catch (err) {
+      console.warn('[TemplateStudio] Nao foi possivel salvar historico de desfazer:', err);
+    }
     if (undoStack.length > 30) undoStack.shift();
+  }
+
+  async function undoLastAction() {
+    const snapshot = undoStack.pop();
+    if (!snapshot) {
+      showStatus('Nada para desfazer.', 'info');
+      return;
+    }
+    try {
+      await restoreEditorSnapshot(snapshot);
+      showStatus('Acao desfeita.', 'success');
+    } catch (err) {
+      console.error('[TemplateStudio] Erro ao desfazer acao:', err);
+      showStatus('Nao foi possivel desfazer esta acao.', 'error');
+    }
+  }
+
+  async function restoreEditorSnapshot(snapshot) {
+    if (!snapshot || !snapshot.layers) throw new Error('Snapshot invalido');
+    selectedElement = null;
+    deselectAllVisuals();
+    if (transformer) {
+      transformer.nodes([]);
+      transformer.visible(false);
+    }
+    Object.keys(konvaElements).forEach(function (k) {
+      if (konvaElements[k] && typeof konvaElements[k].destroy === 'function') konvaElements[k].destroy();
+    });
+    konvaElements = {};
+    layerMeta = {};
+    templateData = normalizeStudioTemplate(JSON.parse(JSON.stringify(snapshot)));
+    await createAllLayers();
+    applyZIndexOrder();
+    layer.draw();
+    updateElementList();
+    const articleUrlInput = document.getElementById('articleUrlInput');
+    if (articleUrlInput) articleUrlInput.value = templateData?.articleData?.url || '';
+    const panel = document.getElementById('propertiesPanel');
+    if (panel) panel.innerHTML = '<p style="color:#666;font-size:12px">Selecione um elemento no canvas para editar.</p>';
   }
 
   // ============================================================
@@ -2418,6 +3135,7 @@
   }
 
   function bindToolbarButtons() {
+    setupSidebarTabs();
     const articleUrlInput = document.getElementById('articleUrlInput');
     if (articleUrlInput) {
       const savedUrl = templateData?.articleData?.url || '';
@@ -2446,13 +3164,19 @@
       imageUploadInput.addEventListener('change', handleImageUpload);
     }
     const btnAddText = document.getElementById('btnAddText');
-    if (btnAddText) btnAddText.addEventListener('click', addTextLayer);
+    if (btnAddText) btnAddText.addEventListener('click', function () { addTextLayer(); });
     const btnAddImage = document.getElementById('btnAddImage');
     if (btnAddImage) btnAddImage.addEventListener('click', addImageLayerByUrl);
     const btnAddGradient = document.getElementById('btnAddGradient');
     if (btnAddGradient) btnAddGradient.addEventListener('click', addGradientLayer);
     const btnAddLine = document.getElementById('btnAddLine');
     if (btnAddLine) btnAddLine.addEventListener('click', addLineLayer);
+    const btnUndo = document.getElementById('btnUndo');
+    if (btnUndo) btnUndo.addEventListener('click', undoLastAction);
+    const btnCopySelected = document.getElementById('btnCopySelected');
+    if (btnCopySelected) btnCopySelected.addEventListener('click', copySelectedLayer);
+    const btnPasteSelected = document.getElementById('btnPasteSelected');
+    if (btnPasteSelected) btnPasteSelected.addEventListener('click', pasteCopiedLayer);
     const btnDuplicateSelected = document.getElementById('btnDuplicateSelected');
     if (btnDuplicateSelected) btnDuplicateSelected.addEventListener('click', duplicateSelectedLayer);
     const btnDeleteSelected = document.getElementById('btnDeleteSelected');
@@ -2463,6 +3187,149 @@
     if (btnCenterSelectedImage) btnCenterSelectedImage.addEventListener('click', centerSelectedImageCrop);
     const btnResetSelectedCrop = document.getElementById('btnResetSelectedCrop');
     if (btnResetSelectedCrop) btnResetSelectedCrop.addEventListener('click', resetSelectedImageCrop);
+    const contextDuplicate = document.getElementById('contextDuplicate');
+    if (contextDuplicate) contextDuplicate.addEventListener('click', duplicateSelectedLayer);
+    const contextLock = document.getElementById('contextLock');
+    if (contextLock) contextLock.addEventListener('click', function () { if (selectedElement) toggleLocked(selectedElement); });
+    const contextDelete = document.getElementById('contextDelete');
+    if (contextDelete) contextDelete.addEventListener('click', deleteSelectedLayer);
+    const contextBack = document.getElementById('contextBack');
+    if (contextBack) contextBack.addEventListener('click', function () { if (selectedElement) moveLayerToBack(selectedElement); });
+    const contextFront = document.getElementById('contextFront');
+    if (contextFront) contextFront.addEventListener('click', function () { if (selectedElement) moveLayerToFront(selectedElement); });
+    const floatDuplicate = document.getElementById('floatDuplicate');
+    if (floatDuplicate) floatDuplicate.addEventListener('click', duplicateSelectedLayer);
+    const floatLock = document.getElementById('floatLock');
+    if (floatLock) floatLock.addEventListener('click', function () { if (selectedElement) toggleLocked(selectedElement); });
+    const floatFront = document.getElementById('floatFront');
+    if (floatFront) floatFront.addEventListener('click', function () { if (selectedElement) moveLayerToFront(selectedElement); });
+    const floatDelete = document.getElementById('floatDelete');
+    if (floatDelete) floatDelete.addEventListener('click', deleteSelectedLayer);
+    const timelinePlay = document.getElementById('timelinePlay');
+    if (timelinePlay) timelinePlay.addEventListener('click', generatePreviewKonva);
+    const timelineToggle = document.getElementById('timelineToggle');
+    if (timelineToggle) timelineToggle.addEventListener('click', toggleTimelinePanel);
+    const btnFitCanvas = document.getElementById('btnFitCanvas');
+    if (btnFitCanvas) btnFitCanvas.addEventListener('click', fitCanvasToView);
+    const btnCenterCanvas = document.getElementById('btnCenterCanvas');
+    if (btnCenterCanvas) btnCenterCanvas.addEventListener('click', centerCanvasInView);
+    const btnZoom50 = document.getElementById('btnZoom50');
+    if (btnZoom50) btnZoom50.addEventListener('click', function () { setCanvasZoom(0.5, { center: true }); });
+    const btnZoom75 = document.getElementById('btnZoom75');
+    if (btnZoom75) btnZoom75.addEventListener('click', function () { setCanvasZoom(0.75, { center: true }); });
+    const btnZoom100 = document.getElementById('btnZoom100');
+    if (btnZoom100) btnZoom100.addEventListener('click', function () { setCanvasZoom(1, { center: true }); });
+    const btnToggleLayers = document.getElementById('btnToggleLayers');
+    if (btnToggleLayers) btnToggleLayers.addEventListener('click', function () { toggleWorkspacePanel('layers'); });
+    const btnToggleProperties = document.getElementById('btnToggleProperties');
+    if (btnToggleProperties) btnToggleProperties.addEventListener('click', function () { toggleWorkspacePanel('properties'); });
+    const btnFocusStudio = document.getElementById('btnFocusStudio');
+    if (btnFocusStudio) btnFocusStudio.addEventListener('click', toggleFocusMode);
+    const btnShortcutHelp = document.getElementById('btnShortcutHelp');
+    if (btnShortcutHelp) btnShortcutHelp.addEventListener('click', function () { setShortcutHelp(true); });
+    const btnCloseShortcuts = document.getElementById('btnCloseShortcuts');
+    if (btnCloseShortcuts) btnCloseShortcuts.addEventListener('click', function () { setShortcutHelp(false); });
+    const shortcutModal = document.getElementById('shortcutModal');
+    if (shortcutModal) {
+      shortcutModal.addEventListener('click', function (event) {
+        if (event.target === shortcutModal) setShortcutHelp(false);
+      });
+    }
+    const alignButtons = {
+      btnAlignLeft: 'left',
+      btnAlignCenterH: 'centerH',
+      btnAlignRight: 'right',
+      btnAlignTop: 'top',
+      btnAlignCenterV: 'centerV',
+      btnAlignBottom: 'bottom'
+    };
+    Object.keys(alignButtons).forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.addEventListener('click', function () { alignSelectedLayer(alignButtons[id]); });
+    });
+    const opacityButtons = {
+      btnOpacity100: 1,
+      btnOpacity75: 0.75,
+      btnOpacity50: 0.5
+    };
+    Object.keys(opacityButtons).forEach(function (id) {
+      const btn = document.getElementById(id);
+      if (btn) btn.addEventListener('click', function () { setSelectedOpacity(opacityButtons[id]); });
+    });
+    updateWorkspaceViewButtons();
+    const btnPanelAddText = document.getElementById('btnPanelAddText');
+    if (btnPanelAddText) btnPanelAddText.addEventListener('click', function () { addTextLayer(); });
+    const btnPanelAddImage = document.getElementById('btnPanelAddImage');
+    if (btnPanelAddImage) btnPanelAddImage.addEventListener('click', addImageLayerByUrl);
+    const btnPanelAddGradient = document.getElementById('btnPanelAddGradient');
+    if (btnPanelAddGradient) btnPanelAddGradient.addEventListener('click', addGradientLayer);
+    const btnPanelAddLine = document.getElementById('btnPanelAddLine');
+    if (btnPanelAddLine) btnPanelAddLine.addEventListener('click', addLineLayer);
+    const btnPanelUploadReplace = document.getElementById('btnPanelUploadReplace');
+    if (btnPanelUploadReplace) btnPanelUploadReplace.addEventListener('click', function () {
+      const uploadMode = document.getElementById('uploadMode');
+      const input = document.getElementById('imageUploadInput');
+      if (uploadMode) uploadMode.value = 'replace';
+      if (input) input.click();
+    });
+    const btnPanelUploadLayer = document.getElementById('btnPanelUploadLayer');
+    if (btnPanelUploadLayer) btnPanelUploadLayer.addEventListener('click', function () {
+      const uploadMode = document.getElementById('uploadMode');
+      const input = document.getElementById('imageUploadInput');
+      if (uploadMode) uploadMode.value = 'layer';
+      if (input) input.click();
+    });
+    const btnPanelImageUrl = document.getElementById('btnPanelImageUrl');
+    if (btnPanelImageUrl) btnPanelImageUrl.addEventListener('click', addImageLayerByUrl);
+    const btnAnalyzeCanvaLink = document.getElementById('btnAnalyzeCanvaLink');
+    if (btnAnalyzeCanvaLink) btnAnalyzeCanvaLink.addEventListener('click', function () { analyzeCanvaTemplateLink(); });
+    const btnCanvaSnapshotExample = document.getElementById('btnCanvaSnapshotExample');
+    if (btnCanvaSnapshotExample) btnCanvaSnapshotExample.addEventListener('click', fillCanvaSnapshotExample);
+    const btnValidateCanvaSnapshot = document.getElementById('btnValidateCanvaSnapshot');
+    if (btnValidateCanvaSnapshot) btnValidateCanvaSnapshot.addEventListener('click', function () { importCanvaBridgeSnapshot(true); });
+    const btnImportCanvaSnapshot = document.getElementById('btnImportCanvaSnapshot');
+    if (btnImportCanvaSnapshot) btnImportCanvaSnapshot.addEventListener('click', function () { importCanvaBridgeSnapshot(false); });
+    const canvaTemplateUrlInput = document.getElementById('canvaTemplateUrlInput');
+    if (canvaTemplateUrlInput) {
+      const savedCanvaUrl = templateData?.integrations?.canva?.sourceUrl || '';
+      if (savedCanvaUrl && !canvaTemplateUrlInput.value) canvaTemplateUrlInput.value = savedCanvaUrl;
+      canvaTemplateUrlInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          analyzeCanvaTemplateLink();
+        }
+      });
+    }
+    const btnPanelTitlePreset = document.getElementById('btnPanelTitlePreset');
+    if (btnPanelTitlePreset) btnPanelTitlePreset.addEventListener('click', function () { addTextPreset('title'); });
+    const btnPanelBodyPreset = document.getElementById('btnPanelBodyPreset');
+    if (btnPanelBodyPreset) btnPanelBodyPreset.addEventListener('click', function () { addTextPreset('body'); });
+    const btnPanelAddTextAgain = document.getElementById('btnPanelAddTextAgain');
+    if (btnPanelAddTextAgain) btnPanelAddTextAgain.addEventListener('click', function () { addTextLayer(); });
+  }
+
+  function setupSidebarTabs() {
+    const tabs = Array.prototype.slice.call(document.querySelectorAll('[data-sidebar-tab]'));
+    const views = Array.prototype.slice.call(document.querySelectorAll('[data-sidebar-view]'));
+    if (!tabs.length || !views.length) return;
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        const target = tab.getAttribute('data-sidebar-tab');
+        tabs.forEach(function (item) { item.classList.toggle('active', item === tab); });
+        views.forEach(function (view) {
+          view.classList.toggle('active', view.getAttribute('data-sidebar-view') === target);
+        });
+      });
+    });
+  }
+
+  function toggleTimelinePanel() {
+    const canvasArea = document.querySelector('.canvas-area');
+    if (!canvasArea) return;
+    canvasArea.classList.toggle('timeline-collapsed');
+    window.requestAnimationFrame(function () {
+      centerCanvasInView();
+    });
   }
 
   function applyStageScale() {
@@ -2470,7 +3337,42 @@
     stage.scale({ x: currentScale, y: currentScale });
     stage.width(CANVAS_WIDTH * currentScale);
     stage.height(CANVAS_HEIGHT * currentScale);
+    updateZoomUi();
     layer.batchDraw();
+  }
+
+  function setCanvasZoom(value, options) {
+    const next = Math.max(0.25, Math.min(1, numOr(value, currentScale)));
+    currentScale = next;
+    applyStageScale();
+    if (options && options.center) centerCanvasInView();
+  }
+
+  function updateZoomUi() {
+    const scaleSlider = document.getElementById('scaleSlider');
+    const scaleValue = document.getElementById('scaleValue');
+    if (scaleSlider && Math.abs(parseFloat(scaleSlider.value) - currentScale) > 0.001) {
+      scaleSlider.value = String(currentScale);
+    }
+    if (scaleValue) scaleValue.textContent = Math.round(currentScale * 100) + '%';
+  }
+
+  function fitCanvasToView() {
+    const scroll = document.querySelector('.canvas-scroll');
+    if (!scroll) return;
+    const availableW = Math.max(260, scroll.clientWidth - 80);
+    const availableH = Math.max(360, scroll.clientHeight - 80);
+    const next = Math.min(1, Math.max(0.25, Math.min(availableW / CANVAS_WIDTH, availableH / CANVAS_HEIGHT)));
+    setCanvasZoom(next, { center: true });
+  }
+
+  function centerCanvasInView() {
+    const scroll = document.querySelector('.canvas-scroll');
+    if (!scroll) return;
+    window.requestAnimationFrame(function () {
+      scroll.scrollLeft = Math.max(0, (scroll.scrollWidth - scroll.clientWidth) / 2);
+      scroll.scrollTop = Math.max(0, (scroll.scrollHeight - scroll.clientHeight) / 2);
+    });
   }
 
   // ============================================================

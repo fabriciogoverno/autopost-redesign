@@ -29,7 +29,7 @@ const PORT = process.env.API_PORT || 3001;
 // Middleware
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 
 // ============================================================
 // HEALTH
@@ -393,6 +393,356 @@ app.post('/api/template/preview', async (req, res) => {
   } catch (err) {
     logError('POST /api/template/preview', err);
     res.status(500).json({ success: false, error: err.message || 'Falha ao gerar preview' });
+  }
+});
+
+function isAllowedCanvaUrl(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    return parsed.hostname === 'canva.link' || parsed.hostname === 'www.canva.com' || parsed.hostname === 'canva.com';
+  } catch (err) {
+    return false;
+  }
+}
+
+function extractCanvaDesignId(value) {
+  const match = String(value || '').match(/\/design\/([^/?#]+)/i);
+  return match ? match[1] : '';
+}
+
+function buildCanvaUseTemplateUrl(templateId) {
+  if (!templateId) return '';
+  const redirect = encodeURIComponent(`/design?create&template=${templateId}`);
+  return `https://www.canva.com/login/?redirect=${redirect}`;
+}
+
+function numberOr(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const n = numberOr(value, fallback);
+  return Math.max(min, Math.min(max, n));
+}
+
+function cleanLayerKey(value, fallback) {
+  const key = String(value || fallback || 'layer')
+    .replace(/[^a-zA-Z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return key || 'layer';
+}
+
+function uniqueImportedLayerKey(layers, baseKey) {
+  const cleanBase = cleanLayerKey(baseKey, 'canva_layer');
+  let key = cleanBase.startsWith('canva_') ? cleanBase : `canva_${cleanBase}`;
+  let i = 1;
+  while (layers[key]) {
+    i += 1;
+    key = `${cleanBase}_${i}`;
+    if (!key.startsWith('canva_')) key = `canva_${key}`;
+  }
+  return key;
+}
+
+function firstValue(source, keys, fallback = '') {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return fallback;
+}
+
+function normalizeCanvaElements(snapshot) {
+  if (Array.isArray(snapshot?.elements)) return snapshot.elements;
+  if (Array.isArray(snapshot?.layers)) return snapshot.layers;
+  if (Array.isArray(snapshot?.pages) && snapshot.pages[0]) {
+    const page = snapshot.pages[0];
+    if (Array.isArray(page.elements)) return page.elements;
+    if (Array.isArray(page.layers)) return page.layers;
+  }
+  return [];
+}
+
+function normalizeCanvaColorStops(value) {
+  if (!Array.isArray(value) || value.length < 2) {
+    return [
+      { offset: 0, color: 'rgba(0,0,0,0)' },
+      { offset: 1, color: 'rgba(0,0,0,0.86)' }
+    ];
+  }
+  return value.map((stop, index) => ({
+    offset: clampNumber(firstValue(stop, ['offset', 'position'], index / Math.max(1, value.length - 1)), 0, 1, index / Math.max(1, value.length - 1)),
+    color: String(firstValue(stop, ['color', 'rgba', 'hex'], '#000000'))
+  }));
+}
+
+function readCanvaText(element) {
+  const text = firstValue(element, ['text', 'plainText', 'content', 'value'], '');
+  if (typeof text === 'string') return text;
+  if (Array.isArray(text)) return text.map(part => part?.text || part?.content || '').join('');
+  return '';
+}
+
+function readCanvaImageSrc(element) {
+  return String(
+    firstValue(element, ['src', 'url', 'imageUrl', 'dataUrl', 'assetUrl'], '')
+    || firstValue(element?.asset, ['src', 'url', 'imageUrl'], '')
+    || firstValue(element?.fill, ['src', 'url', 'imageUrl'], '')
+    || ''
+  );
+}
+
+function canvaElementToLayer(element, index, layers) {
+  const rawType = String(firstValue(element, ['type', 'kind', 'elementType'], 'unknown')).toLowerCase();
+  const role = String(firstValue(element, ['role', 'name', 'label'], '')).toLowerCase();
+  const id = firstValue(element, ['id', 'elementId', 'key'], `element_${index + 1}`);
+  const x = numberOr(firstValue(element, ['x', 'left'], 120), 120);
+  const y = numberOr(firstValue(element, ['y', 'top'], 120), 120);
+  const width = Math.max(1, numberOr(firstValue(element, ['width', 'w'], 720), 720));
+  const height = Math.max(1, numberOr(firstValue(element, ['height', 'h'], 120), 120));
+  const zIndex = numberOr(firstValue(element, ['zIndex', 'z', 'order'], 70 + index), 70 + index);
+  const opacity = clampNumber(firstValue(element, ['opacity'], 1), 0, 1, 1);
+  const rotation = numberOr(firstValue(element, ['rotation', 'rotate'], 0), 0);
+  const base = {
+    id: '',
+    label: firstValue(element, ['label', 'name'], `Canva ${rawType}`),
+    x,
+    y,
+    width,
+    height,
+    zIndex,
+    opacity,
+    rotation,
+    visible: element.visible !== false,
+    locked: false,
+    deletable: true,
+    canvaImported: true,
+    canva: {
+      id,
+      type: rawType,
+      role: role || undefined,
+      raw: element
+    }
+  };
+
+  if (rawType.includes('text') || rawType.includes('richtext')) {
+    return {
+      keyBase: id,
+      layer: {
+        ...base,
+        type: role.includes('badge') || role.includes('categoria') ? 'badge' : 'textBox',
+        text: readCanvaText(element) || 'Texto Canva',
+        fontFamily: 'Aileron',
+        fontWeight: firstValue(element, ['fontWeight'], role.includes('title') || role.includes('titulo') ? 'bold' : 'normal'),
+        fontSize: numberOr(firstValue(element, ['fontSize', 'size'], 42), 42),
+        lineHeight: numberOr(firstValue(element, ['lineHeight'], 50), 50),
+        letterSpacing: numberOr(firstValue(element, ['letterSpacing'], 0), 0),
+        color: String(firstValue(element, ['color', 'textColor'], '#FFFFFF')),
+        align: String(firstValue(element, ['align', 'textAlign'], 'left')),
+        background: String(firstValue(element, ['background', 'backgroundColor'], '#af0014')),
+        textColor: String(firstValue(element, ['textColor', 'color'], '#FFFFFF')),
+        paddingX: numberOr(firstValue(element, ['paddingX'], 22), 22),
+        paddingY: numberOr(firstValue(element, ['paddingY'], 10), 10),
+        borderRadius: numberOr(firstValue(element, ['borderRadius', 'radius'], 0), 0),
+        autoWidth: element.autoWidth !== false
+      }
+    };
+  }
+
+  if (rawType.includes('image') || rawType.includes('photo') || rawType.includes('media') || readCanvaImageSrc(element)) {
+    return {
+      keyBase: id,
+      layer: {
+        ...base,
+        type: 'image',
+        src: readCanvaImageSrc(element),
+        fitMode: String(firstValue(element, ['fitMode', 'objectFit'], 'cover')),
+        objectFit: String(firstValue(element, ['objectFit', 'fitMode'], 'cover')),
+        focalPoint: {
+          x: clampNumber(firstValue(element, ['focalX'], element?.focalPoint?.x ?? 0.5), 0, 1, 0.5),
+          y: clampNumber(firstValue(element, ['focalY'], element?.focalPoint?.y ?? 0.5), 0, 1, 0.5)
+        },
+        focalX: clampNumber(firstValue(element, ['focalX'], element?.focalPoint?.x ?? 0.5), 0, 1, 0.5),
+        focalY: clampNumber(firstValue(element, ['focalY'], element?.focalPoint?.y ?? 0.5), 0, 1, 0.5),
+        zoom: Math.max(0.1, numberOr(firstValue(element, ['zoom'], 1), 1)),
+        panX: numberOr(firstValue(element, ['panX'], 0), 0),
+        panY: numberOr(firstValue(element, ['panY'], 0), 0)
+      }
+    };
+  }
+
+  if (rawType.includes('gradient')) {
+    return {
+      keyBase: id,
+      layer: {
+        ...base,
+        type: 'gradientOverlay',
+        angle: numberOr(firstValue(element, ['angle'], 90), 90),
+        colorStops: normalizeCanvaColorStops(element.colorStops || element.stops)
+      }
+    };
+  }
+
+  if (rawType.includes('line')) {
+    return {
+      keyBase: id,
+      layer: {
+        ...base,
+        type: 'shapeLine',
+        height: Math.max(2, height),
+        color: String(firstValue(element, ['color', 'stroke', 'fill'], '#c11f25'))
+      }
+    };
+  }
+
+  if (rawType.includes('shape') || rawType.includes('rect') || rawType.includes('rectangle')) {
+    return {
+      keyBase: id,
+      layer: {
+        ...base,
+        type: 'shape',
+        color: String(firstValue(element, ['color', 'fill', 'background'], '#000000')),
+        radius: numberOr(firstValue(element, ['radius', 'borderRadius'], 0), 0)
+      }
+    };
+  }
+
+  return {
+    unsupported: {
+      id,
+      type: rawType,
+      reason: 'Tipo ainda nao mapeado para camada Konva editavel'
+    }
+  };
+}
+
+function buildTemplateFromCanvaSnapshot(body) {
+  const payload = body?.snapshot && typeof body.snapshot === 'object' ? body.snapshot : body;
+  const elements = normalizeCanvaElements(payload);
+  if (!elements.length) throw new Error('Snapshot Canva sem elements/layers');
+
+  const base = loadActiveTemplate();
+  const next = JSON.parse(JSON.stringify(base));
+  const replaceCanvaImport = body?.replaceCanvaImport !== false;
+  if (!next.layers) next.layers = {};
+  if (replaceCanvaImport) {
+    for (const [key, layer] of Object.entries(next.layers)) {
+      if (layer?.canvaImported === true) delete next.layers[key];
+    }
+  }
+
+  const imported = [];
+  const unsupported = [];
+  elements.forEach((element, index) => {
+    const mapped = canvaElementToLayer(element, index, next.layers);
+    if (mapped.unsupported) {
+      unsupported.push(mapped.unsupported);
+      return;
+    }
+    const key = uniqueImportedLayerKey(next.layers, mapped.keyBase || `element_${index + 1}`);
+    mapped.layer.id = key;
+    mapped.layer.label = mapped.layer.label || key;
+    next.layers[key] = mapped.layer;
+    imported.push({ id: key, type: mapped.layer.type, label: mapped.layer.label });
+  });
+
+  next.integrations = {
+    ...(next.integrations || {}),
+    canva: {
+      ...((next.integrations && next.integrations.canva) || {}),
+      sourceUrl: body?.sourceUrl || payload.sourceUrl || '',
+      finalUrl: body?.finalUrl || payload.finalUrl || '',
+      designId: body?.designId || payload.designId || payload.templateId || '',
+      templateId: body?.templateId || payload.templateId || payload.designId || '',
+      importedAt: new Date().toISOString(),
+      editableImport: true,
+      importedLayerCount: imported.length,
+      unsupportedLayerCount: unsupported.length
+    }
+  };
+  next.layerOrder = Object.keys(next.layers).sort((a, b) => {
+    const za = typeof next.layers[a]?.zIndex === 'number' ? next.layers[a].zIndex : 50;
+    const zb = typeof next.layers[b]?.zIndex === 'number' ? next.layers[b].zIndex : 50;
+    return za - zb;
+  });
+
+  return { template: next, imported, unsupported };
+}
+
+async function resolveCanvaShareUrl(inputUrl) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    let currentUrl = inputUrl;
+    for (let i = 0; i < 8; i++) {
+      const response = await fetch(currentUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: { 'User-Agent': 'AutoPost-TemplateStudio/1.0' }
+      });
+      const location = response.headers.get('location');
+      if (location && response.status >= 300 && response.status < 400) {
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+      return response.url || currentUrl;
+    }
+    return currentUrl;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+app.post('/api/canva/link-info', async (req, res) => {
+  try {
+    const inputUrl = String(req.body?.url || '').trim();
+    if (!inputUrl) return res.status(400).json({ success: false, error: 'URL do Canva obrigatoria' });
+    if (!isAllowedCanvaUrl(inputUrl)) {
+      return res.status(400).json({ success: false, error: 'Informe um link canva.link ou canva.com/design' });
+    }
+    let finalUrl = inputUrl;
+    try {
+      finalUrl = await resolveCanvaShareUrl(inputUrl);
+    } catch (err) {
+      logInfo(`[canva-link] nao foi possivel resolver redirect: ${err.message}`);
+    }
+    const designId = extractCanvaDesignId(finalUrl) || extractCanvaDesignId(inputUrl);
+    const useTemplateUrl = buildCanvaUseTemplateUrl(designId);
+    res.json({
+      success: true,
+      inputUrl,
+      finalUrl,
+      designId,
+      templateId: designId,
+      useTemplateUrl,
+      editableInCanva: Boolean(useTemplateUrl),
+      editableImport: false,
+      reason: 'O link publico permite criar uma copia editavel dentro do Canva. Para trazer camadas editaveis para o Konva sem perda, e necessario um app Canva usando Design Editing API para ler os elementos e enviar um snapshot estruturado ao AutoPost.'
+    });
+  } catch (err) {
+    logError('POST /api/canva/link-info', err);
+    res.status(500).json({ success: false, error: err.message || 'Falha ao analisar link do Canva' });
+  }
+});
+
+app.post('/api/canva/import-snapshot', async (req, res) => {
+  try {
+    const dryRun = req.body?.dryRun === true;
+    const result = buildTemplateFromCanvaSnapshot(req.body || {});
+    const template = dryRun ? result.template : saveActiveTemplate(result.template);
+    logInfo(`[canva-import] dryRun=${dryRun} imported=${result.imported.length} unsupported=${result.unsupported.length}`);
+    res.json({
+      success: true,
+      dryRun,
+      imported: result.imported,
+      unsupported: result.unsupported,
+      template
+    });
+  } catch (err) {
+    logError('POST /api/canva/import-snapshot', err);
+    res.status(400).json({ success: false, error: err.message || 'Falha ao importar snapshot Canva' });
   }
 });
 

@@ -21,6 +21,7 @@ export default function TemplatesPage() {
   const [status, setStatus] = useState({ type: '', message: '' });
   const [editorNonce, setEditorNonce] = useState(Date.now());
   const [editorExpanded, setEditorExpanded] = useState(false);
+  const [previewPanelOpen, setPreviewPanelOpen] = useState(true);
 
   const loadTemplateState = useCallback(async () => {
     const res = await fetch(`${apiBase}/api/template`);
@@ -202,22 +203,39 @@ export default function TemplatesPage() {
     setEditorNonce(Date.now());
   };
 
+  const workspaceGridClass = previewPanelOpen
+    ? 'grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-3 min-h-[calc(100vh-118px)] px-1 2xl:px-2'
+    : 'grid grid-cols-1 gap-3 min-h-[calc(100vh-118px)] px-1 2xl:px-2';
+
   return (
-    <div className="space-y-3 animate-fade-up -mx-2 2xl:-mx-4">
-      <div className="flex justify-between items-start gap-4 flex-wrap px-2 2xl:px-4">
-        <div>
-          <h2 className="text-2xl font-bold">Templates</h2>
-          <p className="text-sm text-muted-foreground">Studio visual Konva para editar, importar, salvar e gerar previews do template ativo.</p>
+    <div
+      className="space-y-2 animate-fade-up relative left-1/2 -translate-x-1/2"
+      style={{
+        width: 'calc(100vw - 16rem - 2rem)',
+        maxWidth: 'none',
+      }}
+    >
+      <div className="flex justify-between items-center gap-3 flex-wrap px-1 2xl:px-2 py-1">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-2xl font-bold leading-none">Templates</h2>
+            <span className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">Template Studio</span>
+            <span className="px-2 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium">Konva</span>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">Editor visual integrado, importacao por URL, preview real e salvamento do template ativo.</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={reloadEditor} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted">
+        <div className="flex gap-2 flex-wrap justify-end">
+          <button onClick={reloadEditor} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted bg-card">
             <RotateCcw size={14} /> Recarregar editor
           </button>
-          <button onClick={() => setEditorExpanded(true)} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted">
+          <button onClick={() => setPreviewPanelOpen(v => !v)} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted bg-card">
+            {previewPanelOpen ? <Minimize2 size={14} /> : <Eye size={14} />} {previewPanelOpen ? 'Ocultar painel' : 'Mostrar painel'}
+          </button>
+          <button onClick={() => setEditorExpanded(true)} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted bg-card">
             <Maximize2 size={14} /> Expandir editor
           </button>
           <a href="/konva-editor.html" target="_blank" rel="noopener noreferrer"
-             className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted">
+             className="px-3 py-2 border rounded-lg flex items-center gap-2 text-sm hover:bg-muted bg-card">
             <ExternalLink size={14} /> Abrir em nova aba
           </a>
         </div>
@@ -229,14 +247,33 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_330px] gap-3 min-h-[calc(100vh-132px)] px-2 2xl:px-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2 px-1 2xl:px-2">
+        <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Fluxo</p>
+          <p className="text-sm font-medium">Importe URL, ajuste camadas, salve e gere preview.</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Canvas</p>
+          <p className="text-sm font-medium">1080 x 1920, Reels vertical.</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Fonte</p>
+          <p className="text-sm font-medium">Aileron 400/700.</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl px-3 py-2 shadow-sm">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Painel</p>
+          <p className="text-sm font-medium">{previewPanelOpen ? 'Preview lateral ativo.' : 'Modo foco no editor.'}</p>
+        </div>
+      </div>
+
+      <div className={workspaceGridClass}>
         <div className={`bg-card border border-border rounded-xl overflow-hidden shadow-sm ${editorExpanded ? 'fixed inset-3 z-50 flex flex-col' : ''}`}>
-          <div className="px-4 py-2.5 border-b border-border flex items-center justify-between gap-3 bg-card">
+          <div className="px-4 py-2.5 border-b border-border flex items-center justify-between gap-3 bg-card/95 backdrop-blur">
             <div>
               <h3 className="font-semibold">Editor visual</h3>
               <p className="text-xs text-muted-foreground">Use o painel interno para upload, crop, camadas, preview e salvamento.</p>
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground hidden lg:inline">
               <Save size={12} className="inline mr-1" />
               Salvar no editor grava em templates/ururau-reels.json
             </span>
@@ -246,7 +283,7 @@ export default function TemplatesPage() {
               </button>
             )}
           </div>
-          <div className="bg-muted/40 flex-1" style={{ height: editorExpanded ? 'auto' : 'calc(100vh - 178px)', minHeight: editorExpanded ? 0 : 820 }}>
+          <div className="bg-muted/40 flex-1" style={{ height: editorExpanded ? 'auto' : 'calc(100vh - 162px)', minHeight: editorExpanded ? 0 : 860 }}>
             <iframe
               ref={iframeRef}
               src={`/konva-editor.html?v=${editorNonce}`}
@@ -258,7 +295,8 @@ export default function TemplatesPage() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-3 space-y-3 shadow-sm 2xl:sticky 2xl:top-3 self-start max-h-[calc(100vh-106px)] overflow-auto">
+        {previewPanelOpen && (
+        <div className="bg-card border border-border rounded-xl p-3 space-y-3 shadow-sm 2xl:sticky 2xl:top-2 self-start max-h-[calc(100vh-96px)] overflow-auto">
           <h3 className="font-semibold flex items-center gap-2">
             <Eye size={16} /> Preview real (com conteudo arbitrario)
           </h3>
@@ -335,6 +373,7 @@ export default function TemplatesPage() {
             />
           )}
         </div>
+        )}
       </div>
     </div>
   );

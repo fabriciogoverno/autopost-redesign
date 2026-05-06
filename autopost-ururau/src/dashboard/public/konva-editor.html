@@ -166,15 +166,36 @@
       border-color: var(--brand);
     }
     .btn-editor.primary:hover { background: var(--brand-strong); color: #fff; }
+    .btn-editor.active {
+      background: #fff2f4;
+      color: var(--brand);
+      border-color: var(--brand);
+    }
     .btn-editor.danger { color: #b42318; }
     .btn-editor.danger:hover { border-color: #b42318; color: #b42318; }
     .studio-workspace {
       flex: 1;
       min-height: 0;
       display: grid;
-      grid-template-columns: 260px minmax(560px, 1fr) 330px;
+      grid-template-columns: 400px minmax(560px, 1fr) 320px;
       gap: 10px;
       padding: 10px;
+    }
+    .studio-shell.left-collapsed .studio-workspace {
+      grid-template-columns: minmax(560px, 1fr) 320px;
+    }
+    .studio-shell.right-collapsed .studio-workspace {
+      grid-template-columns: 400px minmax(560px, 1fr);
+    }
+    .studio-shell.left-collapsed.right-collapsed .studio-workspace,
+    .studio-shell.focus-mode .studio-workspace {
+      grid-template-columns: minmax(560px, 1fr);
+    }
+    .studio-shell.left-collapsed .layers-panel,
+    .studio-shell.focus-mode .layers-panel,
+    .studio-shell.right-collapsed .properties-panel,
+    .studio-shell.focus-mode .properties-panel {
+      display: none;
     }
     .panel {
       min-height: 0;
@@ -233,6 +254,142 @@
       gap: 12px;
       background: var(--panel-soft);
     }
+    .view-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .view-button {
+      min-height: 32px;
+      padding: 6px 9px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .view-button:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+      background: #fff7f8;
+    }
+    .view-button.active {
+      border-color: var(--brand);
+      color: #fff;
+      background: var(--brand);
+    }
+    .context-toolbar {
+      min-height: 48px;
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #fff;
+      overflow-x: auto;
+    }
+    .context-chip,
+    .context-button {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fff;
+      color: #202938;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      box-shadow: 0 5px 14px rgba(23, 32, 51, 0.06);
+    }
+    .context-button {
+      cursor: pointer;
+      border-radius: 8px;
+      box-shadow: none;
+    }
+    .context-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      color: #98a2b3;
+      border-color: var(--border);
+      background: #f8fafc;
+    }
+    .context-button:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+      background: #fff7f8;
+    }
+    .context-button:disabled:hover {
+      color: #98a2b3;
+      border-color: var(--border);
+      background: #f8fafc;
+      box-shadow: none;
+    }
+    .context-type-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      flex: 0 0 auto;
+    }
+    .context-field {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: #475467;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .context-field input,
+    .context-field select {
+      min-height: 24px;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: #202938;
+      font-weight: 800;
+      font-size: 12px;
+      max-width: 92px;
+    }
+    .context-field input[type="number"] { width: 64px; }
+    .context-field input[type="color"] {
+      width: 28px;
+      height: 24px;
+      padding: 0;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .context-field input[type="range"] {
+      width: 92px;
+      accent-color: var(--brand);
+    }
+    .context-divider {
+      width: 1px;
+      align-self: stretch;
+      min-height: 24px;
+      background: var(--border);
+      flex: 0 0 auto;
+    }
+    .color-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 1px rgba(23, 32, 51, 0.18);
+      flex: 0 0 auto;
+    }
     .scale-control { display: flex; align-items: center; gap: 10px; min-width: 300px; margin-left: auto; }
     .scale-control span { font-size: 12px; color: var(--muted); min-width: 42px; }
     .scale-control input { flex: 1; accent-color: var(--brand); }
@@ -243,7 +400,7 @@
       justify-content: center;
       align-items: center;
       overflow: auto;
-      padding: 16px;
+      padding: 16px 18px;
       background:
         linear-gradient(45deg, rgba(0,0,0,0.035) 25%, transparent 25%),
         linear-gradient(-45deg, rgba(0,0,0,0.035) 25%, transparent 25%),
@@ -253,11 +410,229 @@
       background-size: 28px 28px;
       background-position: 0 0, 0 14px, 14px -14px, -14px 0;
     }
+    .canvas-stage-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: max-content;
+      min-height: max-content;
+    }
+    .floating-selection-bar {
+      position: absolute;
+      left: 50%;
+      top: -46px;
+      transform: translateX(-50%);
+      z-index: 3;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 6px;
+      background: rgba(255,255,255,0.98);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      box-shadow: 0 12px 28px rgba(23,32,51,0.18);
+      white-space: nowrap;
+    }
+    .floating-selection-bar.visible { display: inline-flex; }
+    .floating-selection-bar .mini-action {
+      min-height: 28px;
+      padding: 5px 8px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: transparent;
+      color: #202938;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .floating-selection-bar .mini-action:hover {
+      background: #f2f4f7;
+      border-color: var(--border);
+    }
     #konva-container {
       transform-origin: center;
       box-shadow: 0 20px 70px rgba(0,0,0,0.22);
       background: #000;
     }
+    .timeline-panel {
+      flex: 0 0 190px;
+      border-top: 1px solid var(--border);
+      background: #f1f3f7;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .canvas-area.timeline-collapsed .timeline-panel { flex-basis: 42px; }
+    .canvas-area.timeline-collapsed .timeline-ruler,
+    .canvas-area.timeline-collapsed .timeline-body { display: none; }
+    .timeline-header {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 7px 12px;
+      border-bottom: 1px solid #d7dce5;
+      color: #202938;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .timeline-title-group {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .timeline-title {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .timeline-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+    .timeline-play {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 999px;
+      background: #fff;
+      box-shadow: 0 6px 18px rgba(23,32,51,0.14);
+      cursor: pointer;
+      color: #202938;
+      font-weight: 900;
+    }
+    .timeline-mini-btn {
+      min-height: 30px;
+      padding: 5px 9px;
+      border: 1px solid #d7dce5;
+      border-radius: 8px;
+      background: #fff;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .timeline-mini-btn:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+      background: #fff7f8;
+    }
+    .timeline-ruler {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0;
+      padding: 7px 10px 3px;
+      color: #667085;
+      font-size: 12px;
+      border-bottom: 1px solid #dfe3ea;
+    }
+    .timeline-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 6px 10px 10px;
+    }
+    .timeline-tracks {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .timeline-track {
+      display: grid;
+      grid-template-columns: 180px minmax(180px, 1fr) 180px;
+      gap: 8px;
+      align-items: center;
+      cursor: pointer;
+    }
+    .timeline-name {
+      min-height: 26px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: #8de8ef;
+      color: #16323f;
+      font-size: 12px;
+      font-weight: 800;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .timeline-type {
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.58);
+      color: #344054;
+      font-size: 10px;
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+    .timeline-track.locked .timeline-name { background: #d0d5dd; }
+    .timeline-track.hidden { opacity: 0.52; }
+    .timeline-lane {
+      min-height: 26px;
+      border-radius: 8px;
+      background: #e0e4eb;
+      overflow: hidden;
+      position: relative;
+    }
+    .timeline-bar {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 18%;
+      border-radius: 8px;
+      background: #8de8ef;
+      border: 1px solid rgba(23,32,51,0.08);
+    }
+    .timeline-track-actions {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 5px;
+    }
+    .timeline-track-actions button {
+      min-height: 26px;
+      border: 1px solid #d7dce5;
+      border-radius: 7px;
+      background: #fff;
+      color: #344054;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .timeline-track-actions button:hover {
+      color: var(--brand);
+      border-color: rgba(175,0,20,0.45);
+      background: #fff7f8;
+    }
+    .timeline-track-actions button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      color: #98a2b3;
+      background: #f8fafc;
+      border-color: #e4e7ec;
+    }
+    .timeline-track.active .timeline-name,
+    .timeline-track.active .timeline-bar {
+      outline: 2px solid #7c3aed;
+      outline-offset: 1px;
+    }
+    .timeline-track[data-type="image"] .timeline-bar,
+    .timeline-track[data-type="lockedImage"] .timeline-bar,
+    .timeline-track[data-type="logo"] .timeline-bar { background: linear-gradient(90deg, #111827, #667085); }
+    .timeline-track[data-type="gradientOverlay"] .timeline-bar,
+    .timeline-track[data-type="overlay"] .timeline-bar { background: linear-gradient(90deg, #111827, #f2c94c); }
+    .timeline-track[data-type="shapeLine"] .timeline-bar { background: #c11f25; height: 5px; top: 10px; bottom: auto; }
     .status-banner {
       padding: 8px 10px;
       border-radius: 8px;
@@ -269,6 +644,152 @@
     .status-banner.success { background: #ecfdf3; color: #027a48; border-color: #abefc6; display: block; }
     .status-banner.error { background: #fff1f3; color: #c01048; border-color: #fecdd6; display: block; }
     .status-banner.info { background: #eff4ff; color: #3538cd; border-color: #c7d7fe; display: block; }
+    .sidebar-tabs {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      padding: 8px;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+    }
+    .sidebar-tab {
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      color: #475467;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .sidebar-tab:hover,
+    .sidebar-tab.active {
+      background: #fff7f8;
+      color: var(--brand);
+      border-color: rgba(175,0,20,0.45);
+    }
+    .sidebar-view { display: none; }
+    .sidebar-view.active { display: block; }
+    .asset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+    }
+    .asset-card {
+      min-height: 88px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      color: #202938;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .asset-card:hover {
+      border-color: var(--brand);
+      box-shadow: 0 10px 22px rgba(23,32,51,0.10);
+      transform: translateY(-1px);
+    }
+    .asset-card strong { font-size: 13px; line-height: 1.2; }
+    .asset-card span { color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .asset-card.preview-text strong { font-size: 19px; }
+    .asset-card.preview-title strong { font-size: 24px; line-height: 1; }
+    .asset-card.preview-gradient {
+      background: linear-gradient(180deg, #fff 0%, #f8fafc 35%, #111827 100%);
+    }
+    .upload-drop {
+      border: 1px dashed #b8c0cc;
+      border-radius: 14px;
+      padding: 14px;
+      background: #f8fafc;
+      display: grid;
+      gap: 10px;
+    }
+    .upload-drop .btn-editor { width: 100%; }
+    .template-preset {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .property-summary {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: linear-gradient(180deg, #fff, #f8fafc);
+      margin-bottom: 10px;
+    }
+    .property-summary-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .property-summary-title {
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 900;
+      color: #101828;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .property-summary-type {
+      flex: 0 0 auto;
+      padding: 4px 7px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #fff;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .property-summary-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .property-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      padding: 6px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      margin-bottom: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    .property-tab {
+      min-height: 32px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .property-tab.active,
+    .property-tab:hover {
+      border-color: rgba(175,0,20,0.35);
+      color: var(--brand);
+      background: #fff7f8;
+    }
+    .property-view { display: none; }
+    .property-view.active { display: block; }
     .element-list { display: flex; flex-direction: column; gap: 8px; }
     .element-item {
       padding: 9px;
@@ -277,10 +798,9 @@
       border-radius: 10px;
       cursor: pointer;
       font-size: 12px;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 8px;
-      align-items: center;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
       transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
     }
     .element-item:hover { border-color: rgba(175,0,20,0.45); }
@@ -300,19 +820,25 @@
       background: var(--panel-soft);
       line-height: 1.2;
     }
-    .element-quick { display: flex; gap: 4px; align-items: center; }
+    .element-quick {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      align-items: stretch;
+      width: 100%;
+    }
     .layer-icon-btn,
     .element-actions-menu summary,
     .element-actions-menu button {
-      min-height: 30px;
-      min-width: 30px;
-      padding: 4px 7px;
+      min-height: 34px;
+      min-width: 0;
+      padding: 6px 9px;
       background: var(--panel-soft);
       border: 1px solid var(--border);
       color: #3d485a;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 800;
       transition: all 0.15s;
     }
@@ -320,14 +846,14 @@
     .element-actions-menu summary:hover,
     .element-actions-menu button:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
     .element-actions-menu { position: relative; }
-    .element-actions-menu summary { list-style: none; display: inline-flex; align-items: center; justify-content: center; }
+    .element-actions-menu summary { list-style: none; display: inline-flex; align-items: center; justify-content: center; width: 100%; }
     .element-actions-menu summary::-webkit-details-marker { display: none; }
     .element-actions-menu[open] .layer-menu {
       position: absolute;
       right: 0;
       top: 34px;
       z-index: 10;
-      width: 150px;
+      width: 190px;
       display: grid;
       gap: 4px;
       padding: 6px;
@@ -344,6 +870,155 @@
       font-size: 12px;
     }
     .keyboard-hint { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.45; }
+    .canva-import {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      margin-bottom: 10px;
+    }
+    .canva-import input,
+    .canva-import textarea {
+      width: 100%;
+      min-height: 36px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      outline: none;
+      font: inherit;
+    }
+    .canva-import textarea {
+      min-height: 150px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .canva-import input:focus,
+    .canva-import textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(175,0,20,0.10);
+    }
+    .canva-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .canva-result {
+      display: none;
+      padding: 9px 10px;
+      border-radius: 8px;
+      background: #eff4ff;
+      border: 1px solid #c7d7fe;
+      color: #3538cd;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .canva-result.open { display: block; }
+    .canva-result a { color: inherit; font-weight: 800; }
+    .shortcut-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.38);
+      backdrop-filter: blur(6px);
+    }
+    .shortcut-modal.open { display: flex; }
+    .shortcut-card {
+      width: min(760px, 100%);
+      max-height: min(720px, calc(100vh - 48px));
+      overflow: auto;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+    }
+    .shortcut-header {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.96);
+      backdrop-filter: blur(10px);
+    }
+    .shortcut-header h2 {
+      margin: 0;
+      font-size: 18px;
+      color: #172033;
+    }
+    .shortcut-header p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .shortcut-close {
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fff;
+      color: #344054;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .shortcut-close:hover { border-color: var(--brand); color: var(--brand); }
+    .shortcut-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      padding: 16px 18px 18px;
+    }
+    .shortcut-section {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f8fafc;
+      padding: 12px;
+    }
+    .shortcut-section h3 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #475467;
+    }
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 7px 0;
+      border-top: 1px solid rgba(208, 213, 221, 0.7);
+      color: #202938;
+      font-size: 13px;
+    }
+    .shortcut-row:first-of-type { border-top: 0; padding-top: 0; }
+    .shortcut-row kbd {
+      min-width: 68px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 8px;
+      border: 1px solid #cbd5e1;
+      border-bottom-width: 2px;
+      border-radius: 7px;
+      background: #fff;
+      color: #111827;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
     .tool-section {
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -378,8 +1053,10 @@
     @media (max-width: 1180px) {
       .studio-topbar { grid-template-columns: 1fr; align-items: stretch; }
       .article-bar { grid-template-columns: 1fr auto; }
-      .studio-workspace { grid-template-columns: 280px minmax(420px, 1fr); }
+      .studio-workspace { grid-template-columns: 360px minmax(420px, 1fr); }
       .properties-panel { grid-column: 1 / -1; min-height: 360px; }
+      .timeline-track { grid-template-columns: 140px minmax(140px, 1fr); }
+      .timeline-track-actions { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -401,11 +1078,11 @@
         </div>
         <div class="toolbar-group">
           <span class="toolbar-label">Adicionar</span>
-          <button class="btn-editor" id="btnAddText" title="Adicionar uma nova camada de texto">Texto</button>
-          <button class="btn-editor" id="btnAddImage" title="Adicionar imagem por URL">Imagem URL</button>
-          <button class="btn-editor" id="btnUploadImage" title="Enviar PNG, JPG ou WEBP">Upload</button>
-          <button class="btn-editor" id="btnAddGradient" title="Adicionar camada de gradiente">Gradiente</button>
-          <button class="btn-editor" id="btnAddLine" title="Adicionar linha decorativa">Linha</button>
+          <button class="btn-editor" id="btnAddText" title="Adicionar uma nova camada de texto (T)">Texto</button>
+          <button class="btn-editor" id="btnAddImage" title="Adicionar imagem por URL (I)">Imagem URL</button>
+          <button class="btn-editor" id="btnUploadImage" title="Enviar PNG, JPG ou WEBP (U)">Upload</button>
+          <button class="btn-editor" id="btnAddGradient" title="Adicionar camada de gradiente (G)">Gradiente</button>
+          <button class="btn-editor" id="btnAddLine" title="Adicionar linha decorativa (L)">Linha</button>
           <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
         </div>
         <div class="toolbar-group">
@@ -420,15 +1097,40 @@
         </div>
         <div class="toolbar-group">
           <span class="toolbar-label">Acoes</span>
-          <button class="btn-editor" id="btnDuplicateSelected" title="Duplicar a camada selecionada">Duplicar</button>
-          <button class="btn-editor danger" id="btnDeleteSelected" title="Apagar a camada selecionada">Apagar</button>
-          <button class="btn-editor primary" id="btnSave" title="Salvar template ativo">Salvar</button>
+          <button class="btn-editor" id="btnUndo" title="Desfazer a ultima acao do editor (Ctrl+Z)">Desfazer</button>
+          <button class="btn-editor" id="btnCopySelected" title="Copiar camada selecionada (Ctrl+C)">Copiar</button>
+          <button class="btn-editor" id="btnPasteSelected" title="Colar camada copiada como duplicata (Ctrl+V)">Colar</button>
+          <button class="btn-editor" id="btnDuplicateSelected" title="Duplicar a camada selecionada (Ctrl+D)">Duplicar</button>
+          <button class="btn-editor danger" id="btnDeleteSelected" title="Apagar a camada selecionada (Delete)">Apagar</button>
+          <button class="btn-editor primary" id="btnSave" title="Salvar template ativo (Ctrl+S)">Salvar</button>
           <button class="btn-editor" id="btnReset" title="Restaurar template padrao">Padrao</button>
         </div>
         <div class="toolbar-group">
+          <span class="toolbar-label">Transparencia</span>
+          <button class="btn-editor" id="btnOpacity100" title="Opacidade 100% na camada selecionada (Alt+1)">100%</button>
+          <button class="btn-editor" id="btnOpacity75" title="Opacidade 75% na camada selecionada (Alt+2)">75%</button>
+          <button class="btn-editor" id="btnOpacity50" title="Opacidade 50% na camada selecionada (Alt+3)">50%</button>
+        </div>
+        <div class="toolbar-group">
           <span class="toolbar-label">Preview</span>
-          <button class="btn-editor" id="btnPreviewKonva" title="Gerar PNG client-side do canvas atual">PNG</button>
-          <button class="btn-editor" id="btnPreviewReal" title="Gerar preview usando a API real">Real API</button>
+          <button class="btn-editor" id="btnPreviewKonva" title="Gerar PNG client-side do canvas atual (Alt+P)">PNG</button>
+          <button class="btn-editor" id="btnPreviewReal" title="Gerar preview usando a API real (Alt+R)">Real API</button>
+        </div>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Tela</span>
+          <button class="btn-editor" id="btnToggleLayers" title="Mostrar ou ocultar painel de camadas (Alt+C)">Ocultar camadas</button>
+          <button class="btn-editor" id="btnToggleProperties" title="Mostrar ou ocultar painel de propriedades (Alt+O)">Ocultar propriedades</button>
+          <button class="btn-editor" id="btnFocusStudio" title="Ocultar paineis e ampliar a mesa de edicao (Alt+F)">Modo foco</button>
+          <button class="btn-editor" id="btnShortcutHelp" title="Ver atalhos do editor (? ou F1)">Atalhos</button>
+        </div>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Posicao</span>
+          <button class="btn-editor" id="btnAlignLeft" title="Alinhar camada selecionada a esquerda (Alt+Shift+←)">Esq.</button>
+          <button class="btn-editor" id="btnAlignCenterH" title="Centralizar camada selecionada na horizontal (Alt+Shift+C)">Centro H</button>
+          <button class="btn-editor" id="btnAlignRight" title="Alinhar camada selecionada a direita (Alt+Shift+→)">Dir.</button>
+          <button class="btn-editor" id="btnAlignTop" title="Alinhar camada selecionada ao topo (Alt+Shift+↑)">Topo</button>
+          <button class="btn-editor" id="btnAlignCenterV" title="Centralizar camada selecionada na vertical (Alt+Shift+M)">Meio V</button>
+          <button class="btn-editor" id="btnAlignBottom" title="Alinhar camada selecionada a base (Alt+Shift+↓)">Base</button>
         </div>
       </div>
     </header>
@@ -437,14 +1139,68 @@
       <aside class="panel layers-panel">
         <div class="panel-header">
           <div>
-            <div class="panel-title">Camadas</div>
-            <div class="panel-subtitle">Selecione, ordene, oculte, bloqueie ou duplique.</div>
+            <div class="panel-title">Studio</div>
+            <div class="panel-subtitle">Camadas, elementos, uploads e textos.</div>
           </div>
         </div>
+        <div class="sidebar-tabs" role="tablist" aria-label="Ferramentas do editor">
+          <button class="sidebar-tab active" data-sidebar-tab="layers" type="button">Camadas</button>
+          <button class="sidebar-tab" data-sidebar-tab="elements" type="button">Elementos</button>
+          <button class="sidebar-tab" data-sidebar-tab="uploads" type="button">Uploads</button>
+          <button class="sidebar-tab" data-sidebar-tab="text" type="button">Texto</button>
+        </div>
         <div class="panel-body">
-          <div class="element-list" id="elementList"></div>
-          <div class="keyboard-hint">
-            Atalhos: setas movem 1px; Shift+setas movem 10px; duplo clique edita texto.
+          <div class="sidebar-view active" data-sidebar-view="layers">
+            <div class="element-list" id="elementList"></div>
+            <div class="keyboard-hint">
+              Atalhos: setas movem 1px; Shift+setas 10px; Ctrl+Z desfaz; Ctrl+S salva; Ctrl+D duplica; Delete apaga; T texto; G gradiente; L linha; U upload; Alt+F foco; Alt+Shift+setas alinha.
+            </div>
+          </div>
+          <div class="sidebar-view" data-sidebar-view="elements">
+            <div class="asset-grid">
+              <button class="asset-card preview-text" id="btnPanelAddText" type="button"><strong>Texto</strong><span>Cria uma nova caixa editavel.</span></button>
+              <button class="asset-card" id="btnPanelAddImage" type="button"><strong>Imagem URL</strong><span>Adiciona imagem por link.</span></button>
+              <button class="asset-card preview-gradient" id="btnPanelAddGradient" type="button"><strong>Gradiente</strong><span>Overlay editavel.</span></button>
+              <button class="asset-card" id="btnPanelAddLine" type="button"><strong>Linha</strong><span>Separador visual.</span></button>
+            </div>
+            <div class="keyboard-hint">Elementos novos entram como camadas editaveis, duplicaveis e persistentes.</div>
+          </div>
+          <div class="sidebar-view" data-sidebar-view="uploads">
+            <div class="canva-import">
+              <div>
+                <div class="panel-title">Modelo Canva</div>
+                <div class="panel-subtitle">Analisa link e explica o caminho editavel oficial.</div>
+              </div>
+              <input id="canvaTemplateUrlInput" type="url" placeholder="Cole um link canva.link ou canva.com/design">
+              <button class="btn-editor" id="btnAnalyzeCanvaLink" type="button">Analisar link Canva</button>
+              <div class="canva-result" id="canvaImportResult"></div>
+              <textarea id="canvaSnapshotInput" placeholder="Cole aqui o JSON do Canva Bridge com canvas e elements/layers editaveis"></textarea>
+              <div class="canva-actions">
+                <button class="btn-editor" id="btnCanvaSnapshotExample" type="button">Exemplo</button>
+                <button class="btn-editor" id="btnValidateCanvaSnapshot" type="button">Validar</button>
+                <button class="btn-editor primary" id="btnImportCanvaSnapshot" type="button">Importar</button>
+              </div>
+            </div>
+            <div class="upload-drop">
+              <div>
+                <div class="panel-title">Imagem local</div>
+                <div class="panel-subtitle">PNG, JPG ou WEBP.</div>
+              </div>
+              <button class="btn-editor primary" id="btnPanelUploadReplace" type="button">Substituir imagem da materia</button>
+              <button class="btn-editor" id="btnPanelUploadLayer" type="button">Adicionar como nova camada</button>
+              <button class="btn-editor" id="btnPanelImageUrl" type="button">Adicionar imagem por URL</button>
+            </div>
+            <div class="keyboard-hint">Use o modo de crop na barra contextual ou no painel de propriedades depois de selecionar a imagem.</div>
+          </div>
+          <div class="sidebar-view" data-sidebar-view="text">
+            <div class="asset-grid">
+              <button class="asset-card preview-title" id="btnPanelTitlePreset" type="button"><strong>Titulo</strong><span>Aileron bold grande.</span></button>
+              <button class="asset-card preview-text" id="btnPanelBodyPreset" type="button"><strong>Texto</strong><span>Aileron regular menor.</span></button>
+            </div>
+            <div class="template-preset">
+              <button class="btn-editor" id="btnPanelAddTextAgain" type="button">Adicionar texto padrao</button>
+            </div>
+            <div class="keyboard-hint">Depois de inserir, edite conteudo, fonte e cor na barra contextual ou em Propriedades.</div>
           </div>
         </div>
       </aside>
@@ -452,14 +1208,62 @@
       <section class="canvas-area">
         <div class="canvas-toolbar">
           <div id="statusBanner" class="status-banner"></div>
+          <div class="view-actions" aria-label="Visualizacao do canvas">
+            <button class="view-button" id="btnFitCanvas" type="button" title="Ajustar a arte ao espaco visivel">Ajustar</button>
+            <button class="view-button" id="btnCenterCanvas" type="button" title="Centralizar a arte na mesa">Centralizar</button>
+            <button class="view-button" id="btnZoom50" type="button">50%</button>
+            <button class="view-button" id="btnZoom75" type="button">75%</button>
+            <button class="view-button" id="btnZoom100" type="button">100%</button>
+          </div>
           <div class="scale-control">
             <span>Zoom</span>
             <input type="range" id="scaleSlider" min="0.25" max="1.0" step="0.05" value="0.5">
             <span id="scaleValue">50%</span>
           </div>
         </div>
+        <div class="context-toolbar" id="contextToolbar">
+          <span class="context-chip" id="contextSelection">Nenhuma camada selecionada</span>
+          <button class="context-button" id="contextDuplicate" title="Duplicar camada selecionada">Duplicar</button>
+          <button class="context-button" id="contextLock" title="Bloquear ou desbloquear camada">Bloquear</button>
+          <button class="context-button" id="contextDelete" title="Apagar camada selecionada">Apagar</button>
+          <span class="context-divider"></span>
+          <span class="context-type-tools" id="contextTypeTools"></span>
+          <span class="context-divider"></span>
+          <span class="color-dot" style="background:#af0014" title="Vermelho Ururau"></span>
+          <span class="color-dot" style="background:#111827" title="Preto"></span>
+          <span class="color-dot" style="background:#ffffff" title="Branco"></span>
+          <span class="context-divider"></span>
+          <button class="context-button" id="contextBack" title="Enviar para tras">Tras</button>
+          <button class="context-button" id="contextFront" title="Trazer para frente">Frente</button>
+        </div>
         <div class="canvas-scroll">
-          <div id="konva-container"></div>
+          <div class="canvas-stage-wrap">
+            <div class="floating-selection-bar" id="floatingSelectionBar">
+              <button class="mini-action" id="floatDuplicate" title="Duplicar">Duplicar</button>
+              <button class="mini-action" id="floatLock" title="Bloquear ou desbloquear">Lock</button>
+              <button class="mini-action" id="floatFront" title="Trazer para frente">Frente</button>
+              <button class="mini-action" id="floatDelete" title="Apagar">Apagar</button>
+            </div>
+            <div id="konva-container"></div>
+          </div>
+        </div>
+        <div class="timeline-panel">
+          <div class="timeline-header">
+            <div class="timeline-title-group">
+              <button class="timeline-mini-btn" id="timelineToggle" type="button" title="Ocultar ou mostrar timeline">Timeline</button>
+              <span class="timeline-title">Camadas da arte</span>
+            </div>
+            <div class="timeline-actions">
+              <button class="timeline-play" id="timelinePlay" title="Preview rapido">▶</button>
+              <span>0:00 / 0:05</span>
+            </div>
+          </div>
+          <div class="timeline-ruler">
+            <span>0s</span><span>1s</span><span>2s</span><span>3s</span><span>4s</span><span>5s</span><span></span>
+          </div>
+          <div class="timeline-body">
+            <div class="timeline-tracks" id="timelineTracks"></div>
+          </div>
         </div>
       </section>
 
@@ -477,6 +1281,67 @@
         </div>
       </aside>
     </main>
+
+    <div class="shortcut-modal" id="shortcutModal" aria-hidden="true">
+      <div class="shortcut-card" role="dialog" aria-modal="true" aria-labelledby="shortcutTitle">
+        <div class="shortcut-header">
+          <div>
+            <h2 id="shortcutTitle">Atalhos do Template Studio</h2>
+            <p>Use fora de campos de texto. Em campos, continue digitando normalmente.</p>
+          </div>
+          <button class="shortcut-close" id="btnCloseShortcuts" type="button" title="Fechar atalhos">×</button>
+        </div>
+        <div class="shortcut-grid">
+          <section class="shortcut-section">
+            <h3>Arquivo e historico</h3>
+            <div class="shortcut-row"><span>Desfazer</span><kbd>Ctrl+Z</kbd></div>
+            <div class="shortcut-row"><span>Salvar template</span><kbd>Ctrl+S</kbd></div>
+            <div class="shortcut-row"><span>Preview PNG</span><kbd>Alt+P</kbd></div>
+            <div class="shortcut-row"><span>Preview Real API</span><kbd>Alt+R</kbd></div>
+          </section>
+          <section class="shortcut-section">
+            <h3>Camada selecionada</h3>
+            <div class="shortcut-row"><span>Mover 1px</span><kbd>Setas</kbd></div>
+            <div class="shortcut-row"><span>Mover 10px</span><kbd>Shift+Setas</kbd></div>
+            <div class="shortcut-row"><span>Copiar</span><kbd>Ctrl+C</kbd></div>
+            <div class="shortcut-row"><span>Colar duplicata</span><kbd>Ctrl+V</kbd></div>
+            <div class="shortcut-row"><span>Duplicar</span><kbd>Ctrl+D</kbd></div>
+            <div class="shortcut-row"><span>Apagar</span><kbd>Delete</kbd></div>
+          </section>
+          <section class="shortcut-section">
+            <h3>Adicionar</h3>
+            <div class="shortcut-row"><span>Texto</span><kbd>T</kbd></div>
+            <div class="shortcut-row"><span>Imagem por URL</span><kbd>I</kbd></div>
+            <div class="shortcut-row"><span>Upload</span><kbd>U</kbd></div>
+            <div class="shortcut-row"><span>Gradiente</span><kbd>G</kbd></div>
+            <div class="shortcut-row"><span>Linha</span><kbd>L</kbd></div>
+          </section>
+          <section class="shortcut-section">
+            <h3>Tela</h3>
+            <div class="shortcut-row"><span>Modo foco</span><kbd>Alt+F</kbd></div>
+            <div class="shortcut-row"><span>Camadas</span><kbd>Alt+C</kbd></div>
+            <div class="shortcut-row"><span>Propriedades</span><kbd>Alt+O</kbd></div>
+            <div class="shortcut-row"><span>Ajustar canvas</span><kbd>Ctrl+0</kbd></div>
+            <div class="shortcut-row"><span>Zoom 100%</span><kbd>Ctrl+1</kbd></div>
+          </section>
+          <section class="shortcut-section">
+            <h3>Posicao</h3>
+            <div class="shortcut-row"><span>Alinhar esquerda</span><kbd>Alt+Shift+←</kbd></div>
+            <div class="shortcut-row"><span>Alinhar direita</span><kbd>Alt+Shift+→</kbd></div>
+            <div class="shortcut-row"><span>Alinhar topo</span><kbd>Alt+Shift+↑</kbd></div>
+            <div class="shortcut-row"><span>Alinhar base</span><kbd>Alt+Shift+↓</kbd></div>
+            <div class="shortcut-row"><span>Centro horizontal</span><kbd>Alt+Shift+C</kbd></div>
+            <div class="shortcut-row"><span>Centro vertical</span><kbd>Alt+Shift+M</kbd></div>
+          </section>
+          <section class="shortcut-section">
+            <h3>Transparencia</h3>
+            <div class="shortcut-row"><span>Opacidade 100%</span><kbd>Alt+1</kbd></div>
+            <div class="shortcut-row"><span>Opacidade 75%</span><kbd>Alt+2</kbd></div>
+            <div class="shortcut-row"><span>Opacidade 50%</span><kbd>Alt+3</kbd></div>
+          </section>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="konva-editor.js"></script>
