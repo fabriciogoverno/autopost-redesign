@@ -140,9 +140,9 @@
       "id": "bottomGradient",
       "type": "gradientOverlay",
       "label": "Gradiente Inferior",
-      "x": 0,
-      "y": 850,
-      "width": 1080,
+      "x": -51,
+      "y": 876,
+      "width": 1162,
       "height": 1070,
       "angle": 90,
       "colorStops": [
@@ -204,9 +204,9 @@
       "editable": true,
       "x": 68,
       "y": 1284,
-      "width": 760,
+      "width": 834,
       "height": 320,
-      "maxWidth": 760,
+      "maxWidth": 834,
       "fontFamily": "Aileron",
       "fontSize": 65,
       "fontWeight": "bold",
@@ -224,7 +224,8 @@
       "locked": false,
       "deletable": false,
       "zIndex": 50,
-      "binding": "article.title"
+      "binding": "article.title",
+      "text": "Prefeitura do Rio: selo Diamante e caixa-preta de 126 milhões em publicidade"
     },
     "separator": {
       "id": "separator",
@@ -232,9 +233,9 @@
       "label": "Linha Decorativa",
       "editable": true,
       "x": 75,
-      "y": 1624,
+      "y": 1618,
       "width": 220,
-      "height": 5,
+      "height": 10,
       "color": "#c11f25",
       "radius": 2,
       "hitHeight": 34,
@@ -256,8 +257,8 @@
       "width": 760,
       "height": 200,
       "maxWidth": 760,
-      "fontSize": 34,
-      "lineHeight": 49,
+      "fontSize": 39,
+      "lineHeight": 56,
       "letterSpacing": 0,
       "fontFamily": "Aileron",
       "fontWeight": "normal",
@@ -274,7 +275,8 @@
       "locked": false,
       "deletable": false,
       "zIndex": 60,
-      "binding": "article.summary"
+      "binding": "article.summary",
+      "text": "Gestão Paes reservou R$ 126 milhões em publicidade, mais que a economia dos cortes no Estado, mas não revela o destino final do dinheiro"
     },
     "lockedHeader": {
       "id": "lockedHeader",
@@ -344,5 +346,12 @@
     "title": "Prefeitura do Rio: selo Diamante e caixa-preta de 126 milhões em publicidade",
     "summary": "Gestão Paes reservou R$ 126 milhões em publicidade, mais que a economia dos cortes no Estado, mas não revela o destino final do dinheiro"
   },
-  "articleData": {}
+  "articleData": {
+    "category": "OPINIÃO",
+    "title": "Prefeitura do Rio: selo Diamante e caixa-preta de 126 milhões em publicidade",
+    "summary": "Gestão Paes reservou R$ 126 milhões em publicidade, mais que a economia dos cortes no Estado, mas não revela o destino final do dinheiro",
+    "image": "",
+    "author": "",
+    "date": ""
+  }
 }
