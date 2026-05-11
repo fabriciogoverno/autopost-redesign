@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { proxiedUrl, loadVisualIdentity } from '@/lib/imgProxy';
 import { TEMPLATE_LAYERS, LAYER_ORDER, LAYER_GROUPS, CATEGORY_COLORS, exportTemplate, importTemplate } from '@/lib/templateLayers';
+import { CANVA_BASE_IMAGE } from '@/lib/canvaBaseImage';
 
 export default function EditorWrapper() {
   return (
@@ -95,6 +96,9 @@ function EditorPage() {
     stageRef.current = stage;
     layerRef.current = layer;
     buildAllLayers();
+    // CRÍTICO: carrega a arte do Canva (extraída via Figma API) como base visual.
+    // Sem isso, o editor abre só com camadas Konva — com isso, abre IDÊNTICO ao Canva original.
+    applyBase(CANVA_BASE_IMAGE);
     restoreZOrder();
     stage.on('click tap', (e) => { if (e.target === stage) deselect(); });
     layer.draw();
@@ -154,34 +158,21 @@ function EditorPage() {
   }
 
   // ====================================================
-  // CRÍTICO: garante ordem correta das camadas SEMPRE.
-  // Após adicionar imagem real, base template, etc, isso
-  // reposiciona TUDO conforme LAYER_ORDER + items extras
-  // no topo (imagem real, base imp, etc).
+  // Garante ordem correta das camadas SEMPRE.
+  // base-template (PNG do Canva) fica logo após gradient_overlay.
+  // article-image-actual (imagem da matéria) fica entre slot e gradient.
   // ====================================================
   function restoreZOrder() {
     const layer = layerRef.current;
     if (!layer) return;
-    // 1) Article image real fica logo acima do slot (entre slot e gradient)
-    const articleSlot = nodesRef.current.article_image;
     const realArticle = layer.findOne('.article-image-actual');
-    // 2) Base template (imported PDF/PNG do Canva) fica acima do gradient
     const baseTemplate = layer.findOne('.base-template');
-    // 3) Reordena tudo via zIndex
     let z = 0;
     for (const key of LAYER_ORDER) {
       const n = nodesRef.current[key];
-      if (n) {
-        n.zIndex(z++);
-      }
-      // Inserir realArticle logo após article_image slot
-      if (key === 'article_image' && realArticle) {
-        realArticle.zIndex(z++);
-      }
-      // Inserir baseTemplate logo após gradient_overlay
-      if (key === 'gradient_overlay' && baseTemplate) {
-        baseTemplate.zIndex(z++);
-      }
+      if (n) n.zIndex(z++);
+      if (key === 'article_image' && realArticle) realArticle.zIndex(z++);
+      if (key === 'gradient_overlay' && baseTemplate) baseTemplate.zIndex(z++);
     }
     layer.draw();
   }
@@ -459,7 +450,6 @@ function EditorPage() {
     if (!stageRef.current) return;
     const layer = layerRef.current;
     layer.find('.selection-indicator').forEach((i) => i.visible(false));
-    // Esconde o slot dashed
     const slot = nodesRef.current.article_image;
     const slotVis = slot?.visible();
     if (slot) slot.visible(false);
@@ -507,7 +497,6 @@ function EditorPage() {
       });
       layer.add(baseImg);
       restoreZOrder();
-      showToast('Template base aplicado');
     };
     img.src = dataURL;
   }
@@ -651,13 +640,16 @@ function EditorPage() {
           {tool === 'template' && (
             <div className="p-3 space-y-3">
               <h3 className="text-xs font-bold uppercase text-muted-foreground">Template base</h3>
-              <p className="text-[11px] text-muted-foreground">Importe PDF/PNG do Canva como template visual.</p>
+              <p className="text-[11px] text-muted-foreground">O template Canva já está carregado. Para substituir, importe outro PDF/PNG.</p>
               <label className="cursor-pointer block w-full border-2 border-dashed border-primary/40 rounded-lg p-4 text-center hover:bg-primary/5">
                 <FileText size={20} className="mx-auto mb-1 text-primary" />
                 <p className="text-xs font-semibold text-primary">Importar PDF do Canva</p>
                 <input type="file" accept=".pdf,image/png,image/jpeg" className="hidden"
                   onChange={(e) => e.target.files[0] && uploadBaseTemplate(e.target.files[0])} />
               </label>
+              <button onClick={() => applyBase(CANVA_BASE_IMAGE)} className="w-full py-2 rounded-lg bg-muted text-xs font-medium hover:bg-muted/80">
+                Resetar para template original
+              </button>
             </div>
           )}
 
