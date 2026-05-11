@@ -2,12 +2,11 @@
  * Definição das camadas editáveis do template Ururau Reels (1080×1920).
  *
  * Coordenadas EXATAS extraídas via Figma REST API:
- *   GET https://api.figma.com/v1/files/42aGTHvkypbKFU8E0dUslt
+ *   GET https://api.figma.com/v1/files/DzxX3v8CkEhkOBM3yePj3T
+ *   (Codia AI Canva: Import Canva Designs to Editable Figma)
  *
- * Original (Story do Instagram do usuário, criado no Canva) tinha frame
- * 810×1440 pt. Aplicado scale 4/3 para chegar em canvas 1080×1920 px.
- *
- * Cada camada é editável independentemente no painel direito do editor.
+ * Esse arquivo tem extração nativa do Canva (1:1) com cada camada
+ * individualmente editável — mais preciso que pdf.to.design.
  */
 
 export const CANVAS_W = 1080;
@@ -33,34 +32,33 @@ export const TEMPLATE_LAYERS = {
     locked: true,
   },
 
-  // ===== IMAGEM DA MATÉRIA — slot superior (até onde começa o gradient) =====
+  // ===== IMAGEM DA MATÉRIA (topo) =====
   article_image: {
     label: 'Imagem da matéria',
     kind: 'image-slot',
     defaults: { x: 0, y: 0, width: 1080, height: 1100 },
   },
 
-  // ===== GRADIENT OVERLAY — começa onde os rectangles do PDF começam =====
+  // ===== GRADIENT OVERLAY =====
   gradient_overlay: {
     label: 'Gradiente (escurece base)',
     kind: 'gradient-rect',
     defaults: {
       x: 0, y: 0, width: 1080, height: 1920,
-      gradientStart: 0.43, gradientEnd: 0.62,
+      gradientStart: 0.42, gradientEnd: 0.60,
       colorTop: 'rgba(10,10,10,0)', colorMid: 'rgba(10,10,10,0.7)', colorBottom: 'rgba(10,10,10,1)',
     },
     locked: true,
   },
 
   // ============================================================
-  // LOGO URURAU (canto superior direito)
-  // Coordenadas exatas extraídas do Figma
+  // LOGO URURAU (medidas via Codia AI)
   // ============================================================
   logo_ururau: {
     label: 'Logo · "ururau"',
     kind: 'text',
     defaults: {
-      x: 609, y: 23, text: 'ururau', fontSize: 85,
+      x: 608, y: 24, text: 'ururau', fontSize: 89,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: '900',
       fill: '#FFFFFF', width: 304, letterSpacing: -1,
     },
@@ -68,21 +66,21 @@ export const TEMPLATE_LAYERS = {
   logo_line_left: {
     label: 'Logo · linha ouro ←',
     kind: 'rect',
-    defaults: { x: 604, y: 140, width: 78, height: 5, fill: '#FFDE59', cornerRadius: 2 },
+    defaults: { x: 617, y: 139, width: 64, height: 10, fill: '#FFDE59', cornerRadius: 3 },
   },
   logo_anos: {
-    label: 'Logo · "19 ANOS"',
+    label: 'Logo · "19 anos"',
     kind: 'text',
     defaults: {
-      x: 689, y: 121, text: '19 ANOS', fontSize: 33,
+      x: 685, y: 123, text: '19 anos', fontSize: 42,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
-      fill: '#FFDE59', letterSpacing: 2,
+      fill: '#FFDE59', letterSpacing: 1,
     },
   },
   logo_line_right: {
     label: 'Logo · linha ouro →',
     kind: 'rect',
-    defaults: { x: 836, y: 140, width: 78, height: 5, fill: '#FFDE59', cornerRadius: 2 },
+    defaults: { x: 848, y: 139, width: 64, height: 10, fill: '#FFDE59', cornerRadius: 3 },
   },
   logo_circle: {
     label: 'Logo · círculo @',
@@ -100,33 +98,33 @@ export const TEMPLATE_LAYERS = {
   },
 
   // ============================================================
-  // BADGE CATEGORIA (rodapé esquerda)
+  // BADGE CATEGORIA (frame x=67 y=1169 450×90)
   // ============================================================
   category_bg: {
     label: 'Badge · fundo',
     kind: 'rect',
-    defaults: { x: 65, y: 1176, width: 210, height: 76, fill: '#E63946', cornerRadius: 2 },
+    defaults: { x: 67, y: 1169, width: 280, height: 90, fill: '#E63946', cornerRadius: 4 },
   },
   category_text: {
     label: 'Badge · texto',
     kind: 'text',
     defaults: {
-      x: 84, y: 1185, text: 'PRISÃO', fontSize: 45,
+      x: 84, y: 1186, text: 'PRISÃO', fontSize: 56,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
       fill: '#FFFFFF', letterSpacing: 0,
     },
   },
 
   // ============================================================
-  // TÍTULO (cinza claro, bold, grande)
+  // TÍTULO (#E4E4E4 cinza claro do original)
   // ============================================================
   title: {
     label: 'Título',
     kind: 'text',
     defaults: {
-      x: 68, y: 1265, text: 'Título da matéria aqui em até 4 linhas para boa legibilidade',
-      fontSize: 76, fontFamily: 'Aileron, Inter, Arial', fontStyle: '900',
-      fill: '#E4E4E4', width: 970, lineHeight: 1.10,
+      x: 68, y: 1266, text: 'Título da matéria aqui em até 4 linhas para boa legibilidade',
+      fontSize: 85, fontFamily: 'Aileron, Inter, Arial', fontStyle: '900',
+      fill: '#E4E4E4', width: 865, lineHeight: 1.08,
     },
   },
 
@@ -146,9 +144,9 @@ export const TEMPLATE_LAYERS = {
     label: 'Subtítulo / Resumo',
     kind: 'text',
     defaults: {
-      x: 68, y: 1654, text: 'Subtítulo com o resumo da matéria. Geralmente 2 a 3 linhas explicando o assunto principal da notícia.',
-      fontSize: 40, fontFamily: 'Aileron, Inter, Arial',
-      fill: '#E4E4E4', width: 970, lineHeight: 1.25,
+      x: 68, y: 1655, text: 'Subtítulo com o resumo da matéria. Geralmente 2 a 3 linhas explicando o assunto principal da notícia.',
+      fontSize: 43, fontFamily: 'Aileron, Inter, Arial',
+      fill: '#E4E4E4', width: 755, lineHeight: 1.20,
     },
   },
 
@@ -166,7 +164,6 @@ export const TEMPLATE_LAYERS = {
   },
 };
 
-// Ordem de empilhamento (fundo → topo)
 export const LAYER_ORDER = [
   'background',
   'article_image',
@@ -178,7 +175,6 @@ export const LAYER_ORDER = [
   'watermark',
 ];
 
-// Agrupamento visual no painel de camadas
 export const LAYER_GROUPS = [
   { label: 'Estrutura', keys: ['frame_border', 'background', 'article_image', 'gradient_overlay'] },
   { label: 'Logo Ururau', keys: ['logo_ururau', 'logo_line_left', 'logo_anos', 'logo_line_right', 'logo_circle', 'logo_at'] },
@@ -187,7 +183,6 @@ export const LAYER_GROUPS = [
   { label: 'Marca', keys: ['watermark'] },
 ];
 
-// Cores pré-definidas pra categorias
 export const CATEGORY_COLORS = {
   PRISAO: '#E63946', 'PRISÃO': '#E63946',
   OPINIAO: '#E63946', 'OPINIÃO': '#E63946',
@@ -202,14 +197,10 @@ export const CATEGORY_COLORS = {
   CULTURA: '#F72585',
 };
 
-/**
- * Exporta o estado atual de todas as camadas como JSON serializável.
- */
 export function exportTemplate(nodesRef) {
   const out = { version: 1, canvas: { width: CANVAS_W, height: CANVAS_H }, layers: {} };
   Object.entries(nodesRef).forEach(([key, node]) => {
-    const def = TEMPLATE_LAYERS[key];
-    if (!def || !node) return;
+    if (!node) return;
     const data = {
       x: Math.round(node.x()),
       y: Math.round(node.y()),
