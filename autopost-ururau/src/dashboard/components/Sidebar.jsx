@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, PlusCircle, History, Instagram, Send, Clock, Zap,
-  Palette, Plug, CreditCard, Settings, Sparkles, HelpCircle,
+  Palette, Plug, CreditCard, MoreVertical, Bot,
 } from 'lucide-react';
 
 const sections = [
@@ -20,10 +20,10 @@ const sections = [
   {
     label: 'Redes Sociais',
     items: [
-      { href: '/social',           label: 'Contas',      icon: Instagram },
+      { href: '/social',              label: 'Contas',      icon: Instagram },
       { href: '/social/publications', label: 'Publicações', icon: Send },
-      { href: '/social/scheduled', label: 'Agendados',  icon: Clock },
-      { href: '/social/autoblog',  label: 'Autoblog',    icon: Zap },
+      { href: '/social/scheduled',    label: 'Agendados',   icon: Clock },
+      { href: '/social/autoblog',     label: 'Autoblog',    icon: Zap },
     ],
   },
   {
@@ -32,7 +32,6 @@ const sections = [
       { href: '/visual-identity', label: 'Identidade Visual', icon: Palette },
       { href: '/integrations',    label: 'Integrações',       icon: Plug },
       { href: '/subscription',    label: 'Assinatura',        icon: CreditCard },
-      { href: '/configuracoes',   label: 'Configurações',     icon: Settings },
     ],
   },
 ];
@@ -41,33 +40,34 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-sidebar border-r border-border flex flex-col overflow-y-auto">
-      <div className="px-5 py-5 border-b border-border">
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-soft group-hover:shadow-glow transition-shadow">
-            <Sparkles size={18} className="text-primary-foreground" strokeWidth={2.5} />
-          </div>
-          <div>
-            <h1 className="font-bold text-base tracking-tight text-foreground">AutoPost</h1>
-            <p className="text-[11px] text-muted-foreground -mt-0.5">Ururau · 19 anos</p>
-          </div>
-        </Link>
-      </div>
-
-      <div className="px-3 pt-3">
-        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/40">
-          <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">U</div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-foreground truncate">Ururau</p>
-            <p className="text-[10px] text-muted-foreground">20 créditos</p>
-          </div>
+    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
+      {/* Logo AutoPost */}
+      <div className="px-5 py-4 flex items-center gap-2">
+        <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
+          <Bot size={20} className="text-white" />
         </div>
+        <h1 className="font-bold text-base text-primary">
+          AutoPost<sup className="text-[9px] font-medium">®</sup>
+        </h1>
       </div>
 
-      <nav className="flex-1 px-3 py-3 space-y-4">
+      {/* Avatar do usuário */}
+      <div className="px-3">
+        <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+          <div className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold">T</div>
+          <div className="flex-1 text-left min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">teste</p>
+            <p className="text-[11px] text-muted-foreground font-mono">20 créditos</p>
+          </div>
+          <svg width="10" height="10" viewBox="0 0 10 10" className="text-muted-foreground"><path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
+        </button>
+      </div>
+
+      {/* Menu navigation */}
+      <nav className="flex-1 px-3 py-3 space-y-4 mt-1">
         {sections.map((section) => (
           <div key={section.label}>
-            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               {section.label}
             </p>
             <div className="space-y-0.5">
@@ -77,12 +77,12 @@ export function Sidebar() {
                 return (
                   <Link key={item.href} href={item.href}
                     className={cn(
-                      'flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all',
+                      'flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors',
                       isActive
-                        ? 'bg-primary text-primary-foreground shadow-soft'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                        ? 'bg-gray-100 text-foreground font-semibold'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-gray-50'
                     )}>
-                    <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
+                    <Icon size={15} strokeWidth={1.8} />
                     {item.label}
                   </Link>
                 );
@@ -92,22 +92,32 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="p-3 border-t border-border space-y-2">
+      {/* Card Créditos */}
+      <div className="px-3 pb-2">
         <Link href="/subscription"
-          className="block rounded-xl p-3 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20">
-          <div className="flex items-center gap-2 mb-1">
-            <Zap size={14} className="text-primary" strokeWidth={2.5} />
-            <span className="text-xs font-semibold text-foreground">Créditos</span>
-            <span className="ml-auto text-xs font-bold text-primary">20</span>
-          </div>
-          <div className="h-1 rounded-full bg-primary/10 overflow-hidden">
-            <div className="h-full bg-primary rounded-full" style={{ width: '20%' }} />
+          className="block rounded-lg p-3 bg-blue-50 border border-blue-100 hover:bg-blue-100/50 transition-colors">
+          <div className="flex items-center gap-2">
+            <Zap size={14} className="text-primary fill-primary" />
+            <span className="text-sm font-medium text-foreground flex-1">Créditos</span>
+            <span className="text-sm font-mono text-foreground">20</span>
           </div>
         </Link>
-        <Link href="#" className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent">
-          <HelpCircle size={14} />
-          Ajuda
-        </Link>
+      </div>
+
+      {/* Account no rodapé */}
+      <div className="px-3 pb-3 pt-2 border-t border-gray-100">
+        <div className="flex items-center gap-2 p-2">
+          <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center overflow-hidden">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#E65100"><circle cx="12" cy="12" r="10" /></svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-semibold text-foreground truncate">URURAU</p>
+            <p className="text-[10px] text-muted-foreground truncate">contato@ururau.com.br</p>
+          </div>
+          <button className="p-1 hover:bg-gray-100 rounded">
+            <MoreVertical size={14} className="text-muted-foreground" />
+          </button>
+        </div>
       </div>
     </aside>
   );
