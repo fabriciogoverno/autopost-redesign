@@ -7,33 +7,24 @@ import { Plus, Layers, Edit3, Copy, Trash2, MoreVertical, Maximize2, Search } fr
 const STORAGE_KEY = 'ururau-my-templates-v1';
 
 const LIBRARY = [
-  { id: 'tpl_news_01',     name: 'Notícia Esporte',         category: 'noticia',  accent: '#2A9D8F', preview: 'esporte' },
-  { id: 'tpl_news_02',     name: 'Notícia Política',         category: 'noticia',  accent: '#1D3557', preview: 'politica' },
-  { id: 'tpl_news_03',     name: 'Notícia Segurança',        category: 'noticia',  accent: '#E9C46A', preview: 'seguranca' },
-  { id: 'tpl_news_04',     name: 'Notícia Economia',         category: 'noticia',  accent: '#F4A261', preview: 'economia' },
-  { id: 'tpl_news_05',     name: 'Notícia Geral',            category: 'noticia',  accent: '#6C757D', preview: 'geral' },
-  { id: 'tpl_news_06',     name: 'Notícia Opinião',          category: 'noticia',  accent: '#E63946', preview: 'opiniao' },
-  { id: 'tpl_news_07',     name: 'Notícia Internacional',    category: 'noticia',  accent: '#4361EE', preview: 'internacional' },
-  { id: 'tpl_news_08',     name: 'Notícia Saúde',            category: 'noticia',  accent: '#06A77D', preview: 'saude' },
-  { id: 'tpl_news_09',     name: 'Notícia Educação',         category: 'noticia',  accent: '#7209B7', preview: 'educacao' },
-  { id: 'tpl_news_10',     name: 'Notícia Cultura',          category: 'noticia',  accent: '#F72585', preview: 'cultura' },
-  { id: 'tpl_pesar_01',    name: 'Nota de Pesar — Sóbria',   category: 'pesar',    accent: '#1F1F1F', preview: 'pesar1' },
-  { id: 'tpl_pesar_02',    name: 'Nota de Pesar — Clara',    category: 'pesar',    accent: '#374151', preview: 'pesar2' },
-  { id: 'tpl_pesar_03',    name: 'Nota de Pesar — Discreta', category: 'pesar',    accent: '#525252', preview: 'pesar3' },
-];
-
-const CATEGORIES = [
-  { key: 'todos',   label: 'Todos' },
-  { key: 'noticia', label: 'Notícia' },
-  { key: 'pesar',   label: 'Nota de Pesar' },
+  { id: 'tpl_news_01',     name: 'Notícia Esporte',         category: 'noticia',  accent: '#2A9D8F' },
+  { id: 'tpl_news_02',     name: 'Notícia Política',         category: 'noticia',  accent: '#1D3557' },
+  { id: 'tpl_news_03',     name: 'Notícia Segurança',        category: 'noticia',  accent: '#E9C46A' },
+  { id: 'tpl_news_04',     name: 'Notícia Economia',         category: 'noticia',  accent: '#F4A261' },
+  { id: 'tpl_news_05',     name: 'Notícia Geral',            category: 'noticia',  accent: '#6C757D' },
+  { id: 'tpl_news_06',     name: 'Notícia Opinião',          category: 'noticia',  accent: '#E63946' },
+  { id: 'tpl_news_07',     name: 'Notícia Internacional',    category: 'noticia',  accent: '#4361EE' },
+  { id: 'tpl_news_08',     name: 'Notícia Saúde',            category: 'noticia',  accent: '#06A77D' },
+  { id: 'tpl_news_09',     name: 'Notícia Educação',         category: 'noticia',  accent: '#7209B7' },
+  { id: 'tpl_news_10',     name: 'Notícia Cultura',          category: 'noticia',  accent: '#F72585' },
+  { id: 'tpl_pesar_01',    name: 'Nota de Pesar — Sóbria',   category: 'pesar',    accent: '#1F1F1F' },
+  { id: 'tpl_pesar_02',    name: 'Nota de Pesar — Clara',    category: 'pesar',    accent: '#374151' },
 ];
 
 function TemplateThumb({ tpl }) {
-  // Se tem snapshot real (template salvo do editor), usa imagem
   if (tpl.thumb) {
     return <img src={tpl.thumb} alt={tpl.name} className="w-full h-full object-cover block" />;
   }
-  // Senão, mostra mockup SVG
   return (
     <svg viewBox="0 0 270 480" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
       <defs>
@@ -59,9 +50,7 @@ function TemplateThumb({ tpl }) {
 }
 
 export default function TemplatesPage() {
-  const [tab, setTab] = useState('biblioteca');
-  const [filter, setFilter] = useState('todos');
-  const [search, setSearch] = useState('');
+  const [tab, setTab] = useState('meus');
   const [myTemplates, setMyTemplates] = useState([]);
   const [toast, setToast] = useState(null);
 
@@ -79,15 +68,9 @@ export default function TemplatesPage() {
   }
 
   function adicionar(tpl) {
-    const cloned = {
-      ...tpl,
-      id: `mine_${Date.now()}`,
-      sourceId: tpl.id,
-      name: tpl.name,
-      createdAt: new Date().toISOString(),
-    };
+    const cloned = { ...tpl, id: `mine_${Date.now()}`, sourceId: tpl.id, createdAt: new Date().toISOString() };
     persist([cloned, ...myTemplates]);
-    showToast(`"${tpl.name}" adicionado aos seus templates`);
+    showToast(`"${tpl.name}" adicionado`);
     setTab('meus');
   }
 
@@ -108,12 +91,6 @@ export default function TemplatesPage() {
     setTimeout(() => setToast(null), 2500);
   }
 
-  const filtered = LIBRARY.filter((t) => {
-    if (filter !== 'todos' && t.category !== filter) return false;
-    if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
   return (
     <div className="space-y-5 animate-fade-up">
       {toast && (
@@ -124,122 +101,88 @@ export default function TemplatesPage() {
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-2xl font-bold text-foreground tracking-tight">Criar Post</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Escolha um template para personalizar e adicionar à sua biblioteca.
-          </p>
+          <h1 className="text-2xl font-bold text-foreground">Criar Post</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Selecione um template para criar sua arte</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/editor"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
-            <Plus size={14} /> Novo Template
-          </Link>
-          <div className="flex bg-muted rounded-lg p-1">
-            <button onClick={() => setTab('meus')}
-              className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-all ${
-                tab === 'meus' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
-              }`}>
-              Meus Templates ({myTemplates.length})
-            </button>
-            <button onClick={() => setTab('biblioteca')}
-              className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-all ${
-                tab === 'biblioteca' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
-              }`}>
-              Biblioteca
-            </button>
-          </div>
+        <div className="flex bg-gray-100 rounded-lg p-0.5">
+          <button onClick={() => setTab('meus')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+              tab === 'meus' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}>
+            Meus Templates ({myTemplates.length})
+          </button>
+          <button onClick={() => setTab('biblioteca')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+              tab === 'biblioteca' ? 'bg-white text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}>
+            Biblioteca
+          </button>
         </div>
       </div>
 
-      {tab === 'biblioteca' && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {CATEGORIES.map((c) => (
-            <button key={c.key} onClick={() => setFilter(c.key)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                filter === c.key ? 'bg-primary text-primary-foreground shadow-soft' : 'bg-card border border-border text-foreground hover:bg-muted'
-              }`}>
-              {c.label}
-            </button>
+      {tab === 'meus' && myTemplates.length === 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <Link href="/editor"
+            className="aspect-[9/16] bg-white border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-center p-4 hover:border-primary hover:bg-blue-50/50 transition-colors">
+            <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mb-2">
+              <Plus size={20} className="text-primary" />
+            </div>
+            <p className="text-sm font-medium text-foreground">Criar template</p>
+            <p className="text-xs text-muted-foreground mt-1">Do zero no editor</p>
+          </Link>
+        </div>
+      )}
+
+      {tab === 'meus' && myTemplates.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          {myTemplates.map((tpl) => (
+            <div key={tpl.id} className="bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all overflow-hidden group">
+              <div className="aspect-[9/16] bg-gray-50 overflow-hidden relative">
+                <TemplateThumb tpl={tpl} />
+                <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => duplicar(tpl)} className="w-7 h-7 rounded bg-white shadow-sm hover:bg-gray-50 flex items-center justify-center" title="Mais opções">
+                    <MoreVertical size={13} />
+                  </button>
+                  <button className="w-7 h-7 rounded bg-white shadow-sm hover:bg-gray-50 flex items-center justify-center" title="Expandir">
+                    <Maximize2 size={12} />
+                  </button>
+                </div>
+              </div>
+              <div className="p-3 border-t border-gray-100">
+                <p className="text-sm font-medium text-foreground truncate">{tpl.name}</p>
+              </div>
+              <div className="grid grid-cols-2 border-t border-gray-100 divide-x divide-gray-100">
+                <Link href={`/editor?id=${tpl.id}`}
+                  className="flex items-center justify-center py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
+                  Editar
+                </Link>
+                <Link href={`/editor?id=${tpl.id}&action=create`}
+                  className="flex items-center justify-center py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
+                  Criar
+                </Link>
+              </div>
+            </div>
           ))}
-          <div className="ml-auto relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar template..."
-              className="bg-card border border-border rounded-md pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-64" />
-          </div>
         </div>
       )}
 
       {tab === 'biblioteca' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {filtered.map((tpl) => (
-            <div key={tpl.id} className="bg-card border border-border rounded-xl shadow-soft hover:shadow-card transition-all overflow-hidden group">
-              <div className="aspect-[9/16] bg-muted overflow-hidden">
+          {LIBRARY.map((tpl) => (
+            <div key={tpl.id} className="bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all overflow-hidden">
+              <div className="aspect-[9/16] bg-gray-50 overflow-hidden">
                 <TemplateThumb tpl={tpl} />
               </div>
-              <div className="p-2 border-t border-border">
-                <p className="text-xs font-medium text-foreground truncate">{tpl.name}</p>
+              <div className="p-3 border-t border-gray-100">
+                <p className="text-sm font-medium text-foreground truncate">{tpl.name}</p>
               </div>
               <button onClick={() => adicionar(tpl)}
-                className="w-full flex items-center justify-center gap-1.5 py-2 border-t border-border bg-card hover:bg-primary hover:text-primary-foreground transition-colors text-xs font-semibold">
-                <Plus size={13} strokeWidth={2.5} />
-                Adicionar
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 border-t border-gray-100 hover:bg-gray-50 transition-colors text-sm font-medium">
+                <Plus size={13} /> Adicionar
               </button>
             </div>
           ))}
-          {filtered.length === 0 && (
-            <div className="col-span-full text-center py-16 text-muted-foreground text-sm">
-              Nenhum template encontrado.
-            </div>
-          )}
         </div>
-      )}
-
-      {tab === 'meus' && (
-        <>
-          {myTemplates.length === 0 ? (
-            <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
-              <Layers size={36} className="mx-auto text-muted-foreground mb-3" />
-              <p className="text-sm font-medium text-foreground mb-1">Você ainda não tem templates salvos</p>
-              <p className="text-xs text-muted-foreground mb-4">Crie um novo no editor ou adicione um da biblioteca.</p>
-              <div className="flex items-center justify-center gap-2">
-                <Link href="/editor"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
-                  <Plus size={14} /> Criar no editor
-                </Link>
-                <button onClick={() => setTab('biblioteca')}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">
-                  Ir para a biblioteca
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {myTemplates.map((tpl) => (
-                <div key={tpl.id} className="bg-card border border-border rounded-xl shadow-soft hover:shadow-card transition-all overflow-hidden">
-                  <div className="aspect-[9/16] bg-muted overflow-hidden">
-                    <TemplateThumb tpl={tpl} />
-                  </div>
-                  <div className="p-2 border-t border-border flex items-center justify-between gap-1">
-                    <p className="text-xs font-medium text-foreground truncate flex-1">{tpl.name}</p>
-                    <button onClick={() => duplicar(tpl)} className="p-1 hover:bg-muted rounded text-muted-foreground" title="Duplicar"><Copy size={12} /></button>
-                    <button onClick={() => excluir(tpl.id)} className="p-1 hover:bg-destructive/10 hover:text-destructive rounded text-muted-foreground" title="Excluir"><Trash2 size={12} /></button>
-                  </div>
-                  <div className="grid grid-cols-2 border-t border-border divide-x divide-border">
-                    <Link href={`/editor?id=${tpl.id}`}
-                      className="flex items-center justify-center gap-1 py-2 text-xs font-semibold hover:bg-muted">
-                      <Edit3 size={12} /> Editar
-                    </Link>
-                    <Link href={`/editor?id=${tpl.id}&action=create`}
-                      className="flex items-center justify-center gap-1 py-2 text-xs font-semibold bg-primary text-primary-foreground hover:opacity-90">
-                      Criar Post
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
       )}
     </div>
   );
