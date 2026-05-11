@@ -1,6 +1,5 @@
 import './globals.css';
-import { Sidebar } from '@/components/Sidebar';
-import { Header } from '@/components/Header';
+import { AppShell } from '@/components/AppShell';
 
 export const metadata = {
   title: 'AutoPost Ururau — Transforme notícias em posts',
@@ -17,17 +16,7 @@ export default function RootLayout({ children }) {
         <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/aileron" />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <Header />
-            <main className="flex-1 overflow-y-auto bg-muted/30">
-              <div className="max-w-[1600px] mx-auto p-4 lg:p-6">
-                {children}
-              </div>
-            </main>
-          </div>
-        </div>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
