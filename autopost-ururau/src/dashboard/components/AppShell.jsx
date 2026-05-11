@@ -3,16 +3,23 @@
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { SeedTemplateLoader } from './SeedTemplateLoader';
 
 export function AppShell({ children }) {
   const pathname = usePathname();
-  // No editor o user quer fullscreen — sem sidebar/header da app
   const isEditor = pathname?.startsWith('/editor');
+  const isAuth = pathname?.startsWith('/auth');
 
-  if (isEditor) return <>{children}</>;
+  if (isEditor || isAuth) {
+    return <>
+      <SeedTemplateLoader />
+      {children}
+    </>;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
+      <SeedTemplateLoader />
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
