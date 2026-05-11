@@ -1,147 +1,111 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Link2, Plus, Trash2, ExternalLink, Globe, Rss } from 'lucide-react';
+import { useState } from 'react';
+import { Link2, FileText, List, Rss, Code, X, Sparkles, Clipboard } from 'lucide-react';
 
-const STORAGE_KEY = 'ururau-integrations-v1';
-
-const INTEGRATION_TYPES = [
-  { id: 'site', label: 'Site de notícias', icon: Globe, hint: 'Extrai conteúdo por URL de matérias individuais' },
-  { id: 'rss', label: 'Feed RSS', icon: Rss, hint: 'Monitora um feed RSS e cria posts automaticamente' },
+const TYPES = [
+  { id: 'extract', icon: FileText, color: 'bg-blue-500', label: 'Extrair conteúdo da notícia', desc: 'Captura o conteúdo completo de uma notícia através do link.' },
+  { id: 'list',    icon: List,     color: 'bg-purple-500', label: 'Buscar últimas notícias da página', desc: 'Extraia uma lista de notícias de uma página específica.' },
+  { id: 'rss',     icon: Rss,      color: 'bg-orange-500', label: 'Buscar últimas notícias via RSS/Atom', desc: 'Conecte um feed RSS ou Atom para buscar notícias automaticamente.' },
+  { id: 'custom',  icon: Code,     color: 'bg-gray-700', label: 'Extrair conteúdo personalizado do site', desc: 'Escolha quais informações você deseja extrair do seu site.' },
 ];
 
 export default function IntegrationsPage() {
-  const [items, setItems] = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: 'site', name: '', url: '' });
-  const [toast, setToast] = useState(null);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      setItems(stored);
-    } catch {}
-  }, []);
-
-  function persist(next) {
-    setItems(next);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
-  }
-
-  function add() {
-    if (!form.name || !form.url) return;
-    const next = [{ id: `int_${Date.now()}`, ...form, createdAt: new Date().toISOString() }, ...items];
-    persist(next);
-    setForm({ type: 'site', name: '', url: '' });
-    setShowForm(false);
-    showToast('Integração criada');
-  }
-
-  function remove(id) {
-    if (!confirm('Remover integração?')) return;
-    persist(items.filter((i) => i.id !== id));
-    showToast('Integração removida');
-  }
-
-  function showToast(msg) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2000);
-  }
+  const [modal, setModal] = useState(null);
+  const [url, setUrl] = useState('');
+  const [step, setStep] = useState(1);
 
   return (
     <div className="space-y-5 animate-fade-up">
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg bg-success text-success-foreground shadow-card text-sm font-medium animate-fade-up">
-          ✓ {toast}
-        </div>
-      )}
-
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Integrações</h2>
+          <h1 className="text-2xl font-bold text-foreground">Integrações</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Configure integrações para extração automática de conteúdo</p>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 shadow-soft">
-          <Plus size={15} /> Adicionar
+        <button onClick={() => setModal('chooser')} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+          <span>+</span> Adicionar
         </button>
       </div>
 
-      {showForm && (
-        <div className="bg-card border border-border rounded-xl shadow-soft p-5 space-y-3">
-          <h3 className="text-sm font-semibold">Nova integração</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {INTEGRATION_TYPES.map((t) => {
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center mb-4">
+          <Link2 size={28} className="text-primary" />
+        </div>
+        <h2 className="text-base font-semibold text-foreground">Nenhuma integração configurada</h2>
+        <p className="text-sm text-muted-foreground mt-1 max-w-md">Crie uma integração para extrair automaticamente conteúdo de sites de notícias e outras fontes.</p>
+        <button onClick={() => setModal('chooser')} className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+          <span>+</span> Criar Primeira Integração
+        </button>
+      </div>
+
+      {modal === 'chooser' && (
+        <Modal onClose={() => setModal(null)}>
+          <h2 className="text-lg font-bold mb-4">Escolha o tipo de integração</h2>
+          <div className="space-y-3">
+            {TYPES.map(t => {
               const Icon = t.icon;
-              const active = form.type === t.id;
               return (
-                <button key={t.id} onClick={() => setForm({ ...form, type: t.id })}
-                  className={`p-3 rounded-lg border text-left transition-all ${
-                    active ? 'bg-primary/10 border-primary/40' : 'bg-muted/30 border-border hover:bg-muted/60'
-                  }`}>
-                  <Icon size={16} className={active ? 'text-primary' : 'text-muted-foreground'} />
-                  <p className="text-sm font-semibold mt-1">{t.label}</p>
-                  <p className="text-[11px] text-muted-foreground">{t.hint}</p>
+                <button key={t.id} onClick={() => { setModal(t.id); setStep(1); }} className="w-full p-4 rounded-lg border border-border hover:bg-muted/30 flex items-center gap-4 text-left transition-colors">
+                  <div className={`w-12 h-12 rounded-lg ${t.color} flex items-center justify-center text-white shrink-0`}>
+                    <Icon size={20} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm">{t.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t.desc}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">0/1</span>
                 </button>
               );
             })}
           </div>
-          <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Nome da integração (ex.: G1 Rio)"
-            className="w-full bg-muted border border-transparent focus:bg-background focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-          <input type="url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })}
-            placeholder={form.type === 'rss' ? 'https://exemplo.com/feed.xml' : 'https://www.exemplo.com.br'}
-            className="w-full bg-muted border border-transparent focus:bg-background focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-          <div className="flex items-center gap-2 pt-1">
-            <button onClick={add} disabled={!form.name || !form.url}
-              className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50">
-              Criar
-            </button>
-            <button onClick={() => setShowForm(false)}
-              className="px-4 py-2 rounded-md bg-muted text-foreground text-sm font-medium">Cancelar</button>
-          </div>
-        </div>
+        </Modal>
       )}
 
-      {items.length === 0 && !showForm ? (
-        <div className="text-center py-24 bg-card border border-dashed border-border rounded-xl">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
-            <Link2 size={28} className="text-primary" strokeWidth={1.5} />
+      {modal === 'extract' && (
+        <Modal onClose={() => setModal(null)}>
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <Step n={1} active={step >= 1} label="Cole URL" />
+            <div className="w-12 h-px border-t border-dashed border-border" />
+            <Step n={2} active={step >= 2} label="Preview" />
+            <div className="w-12 h-px border-t border-dashed border-border" />
+            <Step n={3} active={step >= 3} label="Conectado!" />
           </div>
-          <p className="text-lg font-semibold text-foreground mb-1">Nenhuma integração configurada</p>
-          <p className="text-sm text-muted-foreground mb-5 max-w-md mx-auto">Crie uma integração para extrair automaticamente conteúdo de sites de notícias e outras fontes.</p>
-          <button onClick={() => setShowForm(true)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 shadow-soft">
-            <Plus size={16} /> Criar Primeira Integração
-          </button>
-        </div>
-      ) : (
-        <div className="bg-card border border-border rounded-xl shadow-soft divide-y divide-border">
-          {items.map((it) => {
-            const T = INTEGRATION_TYPES.find((t) => t.id === it.type) || INTEGRATION_TYPES[0];
-            const Icon = T.icon;
-            return (
-              <div key={it.id} className="flex items-center gap-4 p-4 hover:bg-muted/30">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <Icon size={18} className="text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">{it.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{it.url}</p>
-                </div>
-                <a href={it.url} target="_blank" rel="noreferrer" className="p-2 hover:bg-muted rounded text-muted-foreground">
-                  <ExternalLink size={14} />
-                </a>
-                <button onClick={() => remove(it.id)}
-                  className="p-2 hover:bg-destructive/10 hover:text-destructive rounded text-muted-foreground">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
+          <div className="flex justify-center mb-4"><FileText size={40} className="text-primary" /></div>
+          <h3 className="text-center font-bold text-lg">Vamos conectar seu site?</h3>
+          <p className="text-center text-sm text-muted-foreground mb-4">Cole um link de notícia do seu site.</p>
+          <div className="relative">
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://seusite.com/noticias/exemplo" className="w-full bg-muted/30 border border-border rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            <button className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 hover:bg-muted rounded"><Clipboard size={14} /></button>
+          </div>
+          <p className="text-center text-xs text-muted-foreground mt-2">Vamos analisar o conteúdo com IA e extrair as informações automaticamente.</p>
+          <div className="flex gap-3 mt-5">
+            <button onClick={() => setModal(null)} className="flex-1 py-2.5 rounded-lg border border-border hover:bg-muted/30 text-sm font-medium">Cancelar</button>
+            <button className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 flex items-center justify-center gap-2">
+              <Sparkles size={14} /> Analisar com IA
+            </button>
+          </div>
+        </Modal>
       )}
+    </div>
+  );
+}
+
+function Modal({ children, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-card rounded-2xl shadow-xl p-6 max-w-xl w-full relative">
+        <button onClick={onClose} className="absolute top-3 right-3 p-1 hover:bg-muted rounded-full"><X size={16} /></button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Step({ n, active, label }) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${active ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}>{n}</div>
+      <span className="text-[10px] text-muted-foreground">{label}</span>
     </div>
   );
 }
