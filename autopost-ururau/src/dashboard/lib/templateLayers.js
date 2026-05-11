@@ -1,111 +1,56 @@
 /**
  * Definição das camadas editáveis do template Ururau Reels (1080×1920).
  *
- * O fundo é renderizado pela imagem base extraída direto do Canva via Figma API
- * (lib/canvaBaseImage.js — file 42aGTHvkypbKFU8E0dUslt, node 1002:121).
- * Esse PNG contém: logo "ururau" + "19 ANOS" + linhas douradas + círculo @ + gradient.
+ * NOVA ARQUITETURA (inspirada no trabalho do Codex no ururau-reels-v11):
+ *   - Foto da matéria preenche TODO o stage como cover-fit (camada base)
+ *   - Gradient overlay é camada Konva separada (transparente em cima, preto embaixo)
+ *   - PNG transparente sobreposto contém APENAS o logo Ururau
+ *   - Textos editáveis (badge, título, linha, subtítulo, watermark) ficam por cima
  *
- * As camadas Konva sobrepostas adicionam APENAS os elementos dinâmicos editáveis:
- *   - Imagem da matéria (preenche o slot vazio do topo)
- *   - Badge categoria (fundo + texto)
- *   - Título
- *   - Linha decorativa
- *   - Subtítulo
- *   - Watermark
- *
- * As camadas do logo continuam definidas (mas visible:false) caso o usuário
- * queira editar manualmente — basta mostrar no painel Camadas.
+ * Ordem de renderização (do fundo para o topo):
+ *   1. background (preto fallback, locked)
+ *   2. article_image (foto da matéria, cover, draggable + transformer)
+ *   3. gradient_overlay (Konva gradient transparente -> preto)
+ *   4. base-template (PNG só com logo)
+ *   5. category_bg + category_text
+ *   6. title
+ *   7. separator
+ *   8. summary
+ *   9. watermark
  */
 
 export const CANVAS_W = 1080;
 export const CANVAS_H = 1920;
 
-export const TEMPLATE_LAYERS = {
-  // ===== MOLDURA opcional =====
-  frame_border: {
-    label: 'Moldura',
-    kind: 'rect-stroke',
-    defaults: {
-      x: 12, y: 12, width: 1056, height: 1896,
-      stroke: '#FFDE59', strokeWidth: 8, fill: 'transparent',
-      cornerRadius: 0, visible: false,
-    },
-  },
+// Cor oficial do vermelho Ururau (extraída do PDF do usuário)
+export const URURAU_RED = '#af0014';
 
-  // ===== BACKGROUND =====
+export const TEMPLATE_LAYERS = {
+  // ===== FUNDO PRETO (fallback caso não tenha foto) =====
   background: {
     label: 'Fundo (cor)',
     kind: 'rect',
-    defaults: { x: 0, y: 0, width: 1080, height: 1920, fill: '#0a0a0a', listening: false },
+    defaults: { x: 0, y: 0, width: 1080, height: 1920, fill: '#000000', listening: false },
     locked: true,
   },
 
-  // ===== IMAGEM DA MATÉRIA (topo) =====
+  // ===== IMAGEM DA MATÉRIA (cobre TODO o canvas) =====
   article_image: {
     label: 'Imagem da matéria',
     kind: 'image-slot',
-    defaults: { x: 0, y: 0, width: 1080, height: 1100 },
+    defaults: { x: 0, y: 0, width: 1080, height: 1920 },
   },
 
-  // ===== GRADIENT OVERLAY (desativado por padrão — o canva-base já tem o gradient) =====
+  // ===== GRADIENT OVERLAY (Konva, transparente em cima -> preto embaixo) =====
   gradient_overlay: {
-    label: 'Gradiente extra',
+    label: 'Gradiente (escurece base inferior)',
     kind: 'gradient-rect',
     defaults: {
       x: 0, y: 0, width: 1080, height: 1920,
-      gradientStart: 0.42, gradientEnd: 0.60,
-      colorTop: 'rgba(10,10,10,0)', colorMid: 'rgba(10,10,10,0.7)', colorBottom: 'rgba(10,10,10,1)',
-      visible: false,
-    },
-    locked: true,
-  },
-
-  // ============================================================
-  // LOGO URURAU (camadas Konva — visible:false porque já está na base PNG)
-  // ============================================================
-  logo_ururau: {
-    label: 'Logo · "ururau"',
-    kind: 'text',
-    defaults: {
-      x: 608, y: 24, text: 'ururau', fontSize: 89,
-      fontFamily: 'Aileron, Inter, Arial', fontStyle: '900',
-      fill: '#FFFFFF', width: 304, letterSpacing: -1,
-      visible: false,
-    },
-  },
-  logo_line_left: {
-    label: 'Logo · linha ouro ←',
-    kind: 'rect',
-    defaults: { x: 617, y: 139, width: 64, height: 10, fill: '#FFDE59', cornerRadius: 3, visible: false },
-  },
-  logo_anos: {
-    label: 'Logo · "19 anos"',
-    kind: 'text',
-    defaults: {
-      x: 685, y: 123, text: '19 anos', fontSize: 42,
-      fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
-      fill: '#FFDE59', letterSpacing: 1,
-      visible: false,
-    },
-  },
-  logo_line_right: {
-    label: 'Logo · linha ouro →',
-    kind: 'rect',
-    defaults: { x: 848, y: 139, width: 64, height: 10, fill: '#FFDE59', cornerRadius: 3, visible: false },
-  },
-  logo_circle: {
-    label: 'Logo · círculo @',
-    kind: 'circle',
-    defaults: { x: 984, y: 105, radius: 58, fill: '#E63946', visible: false },
-  },
-  logo_at: {
-    label: 'Logo · símbolo @',
-    kind: 'text',
-    defaults: {
-      x: 935, y: 50, text: '@', fontSize: 95,
-      fontFamily: 'Inter, Arial', fontStyle: 'bold',
-      fill: '#FFFFFF', width: 100, align: 'center',
-      visible: false,
+      gradientStart: 0.30, gradientEnd: 0.85,
+      colorTop: 'rgba(0,0,0,0)',
+      colorMid: 'rgba(0,0,0,0.55)',
+      colorBottom: 'rgba(0,0,0,0.95)',
     },
   },
 
@@ -115,7 +60,7 @@ export const TEMPLATE_LAYERS = {
   category_bg: {
     label: 'Badge · fundo',
     kind: 'rect',
-    defaults: { x: 67, y: 1169, width: 280, height: 90, fill: '#E63946', cornerRadius: 4 },
+    defaults: { x: 67, y: 1169, width: 280, height: 90, fill: URURAU_RED, cornerRadius: 4 },
   },
   category_text: {
     label: 'Badge · texto',
@@ -135,22 +80,22 @@ export const TEMPLATE_LAYERS = {
     kind: 'text',
     defaults: {
       x: 68, y: 1266, text: 'Título da matéria aqui em até 4 linhas para boa legibilidade',
-      fontSize: 85, fontFamily: 'Aileron, Inter, Arial', fontStyle: '900',
-      fill: '#E4E4E4', width: 865, lineHeight: 1.08,
+      fontSize: 85, fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
+      fill: '#FFFFFF', width: 865, lineHeight: 1.08,
     },
   },
 
   // ============================================================
-  // LINHA DECORATIVA VERMELHA
+  // LINHA DECORATIVA
   // ============================================================
   separator: {
     label: 'Linha decorativa',
     kind: 'rect',
-    defaults: { x: 68, y: 1622, width: 282, height: 10, fill: '#C11F25', cornerRadius: 5 },
+    defaults: { x: 68, y: 1622, width: 282, height: 10, fill: URURAU_RED, cornerRadius: 5 },
   },
 
   // ============================================================
-  // SUBTÍTULO / RESUMO
+  // SUBTÍTULO
   // ============================================================
   summary: {
     label: 'Subtítulo / Resumo',
@@ -171,7 +116,7 @@ export const TEMPLATE_LAYERS = {
     defaults: {
       x: 68, y: 1875, text: 'URURAU.COM.BR', fontSize: 22,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
-      fill: '#FFFFFF', opacity: 0.5, letterSpacing: 3,
+      fill: '#FFFFFF', opacity: 0.7, letterSpacing: 3,
     },
   },
 };
@@ -180,24 +125,21 @@ export const LAYER_ORDER = [
   'background',
   'article_image',
   'gradient_overlay',
-  'frame_border',
-  'logo_ururau', 'logo_line_left', 'logo_anos', 'logo_line_right', 'logo_circle', 'logo_at',
   'category_bg', 'category_text',
   'title', 'separator', 'summary',
   'watermark',
 ];
 
 export const LAYER_GROUPS = [
-  { label: 'Estrutura', keys: ['frame_border', 'background', 'article_image', 'gradient_overlay'] },
-  { label: 'Logo Ururau (já na base — opcional)', keys: ['logo_ururau', 'logo_line_left', 'logo_anos', 'logo_line_right', 'logo_circle', 'logo_at'] },
+  { label: 'Estrutura', keys: ['background', 'article_image', 'gradient_overlay'] },
   { label: 'Categoria', keys: ['category_bg', 'category_text'] },
   { label: 'Conteúdo', keys: ['title', 'separator', 'summary'] },
   { label: 'Marca', keys: ['watermark'] },
 ];
 
 export const CATEGORY_COLORS = {
-  PRISAO: '#E63946', 'PRISÃO': '#E63946',
-  OPINIAO: '#E63946', 'OPINIÃO': '#E63946',
+  PRISAO: URURAU_RED, 'PRISÃO': URURAU_RED,
+  OPINIAO: URURAU_RED, 'OPINIÃO': URURAU_RED,
   POLITICA: '#1D3557', 'POLÍTICA': '#1D3557',
   ESPORTE: '#2A9D8F',
   SEGURANCA: '#E9C46A', 'SEGURANÇA': '#E9C46A',
@@ -210,7 +152,7 @@ export const CATEGORY_COLORS = {
 };
 
 export function exportTemplate(nodesRef) {
-  const out = { version: 1, canvas: { width: CANVAS_W, height: CANVAS_H }, layers: {} };
+  const out = { version: 2, canvas: { width: CANVAS_W, height: CANVAS_H }, layers: {} };
   Object.entries(nodesRef).forEach(([key, node]) => {
     if (!node) return;
     const data = {
