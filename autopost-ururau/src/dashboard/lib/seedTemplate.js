@@ -1,5 +1,5 @@
-// Template padrão pré-cadastrado para o user (replicando o do AutoPost real)
-// Carrega automaticamente na primeira vez que o user entra em /templates
+// Template padrão pré-cadastrado replicando o real do user no AutoPost
+// (Template ururau - matéria Eduardo Paes / prefeita SF)
 
 import { URURAU_RED } from './templateLayers';
 
@@ -11,40 +11,19 @@ export const SEED_TEMPLATE = {
   preview: 'custom',
   sourceId: 'ururau-default',
   createdAt: new Date().toISOString(),
-  // Texto exemplo baseado no template real do user
   state: {
-    version: 4,
+    version: 5,
     canvas: { width: 1080, height: 1920 },
     layers: {
-      'category_text': {
-        x: 84, y: 1186, text: 'APREENSÃO', fontSize: 56,
-        fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
-        fill: '#FFFFFF', width: 280, visible: true, opacity: 1, align: 'center',
-      },
-      'category': {
-        x: 67, y: 1169, width: 320, height: 90,
-        fill: URURAU_RED, cornerRadius: 4, visible: true, opacity: 1,
-      },
-      'title': {
-        x: 68, y: 1266,
-        text: 'Porsche do Thiago Rangel é apreendido pela PF em operação no Rio',
-        fontSize: 85, fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
-        fill: '#FFFFFF', width: 940, lineHeight: 1.08, visible: true, opacity: 1,
-      },
-      'line': {
-        x: 68, y: 1622, width: 282, height: 10,
-        fill: URURAU_RED, cornerRadius: 5, visible: true, opacity: 1,
-      },
-      'subtitle': {
-        x: 68, y: 1655,
-        text: 'PF cumpre mandados de busca e apreensão em operação contra fraudes na Educação do RJ',
-        fontSize: 43, fontFamily: 'Aileron, Inter, Arial',
-        fill: '#E4E4E4', width: 940, lineHeight: 1.20, visible: true, opacity: 1,
-      },
+      'category': { x: 44, y: 1170, width: 220, height: 88, fill: URURAU_RED, cornerRadius: 4, visible: true, opacity: 1 },
+      'category_text': { x: 70, y: 1190, text: 'OPINIÃO', fontSize: 50, fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold', fill: '#FFFFFF', width: 220, visible: true, opacity: 1, align: 'center' },
+      'title': { x: 44, y: 1295, text: 'Eduardo Paes pode ter dado um passo em falso com a filiação da prefeita de São Francisco', fontSize: 72, fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold', fill: '#FFFFFF', width: 1000, lineHeight: 1.05, visible: true, opacity: 1 },
+      'line': { x: 44, y: 1610, width: 125, height: 7, fill: URURAU_RED, cornerRadius: 3, visible: true, opacity: 1 },
+      'subtitle': { x: 44, y: 1650, text: 'Aproximação da prefeita com Paes cria ruído no tabuleiro político do Norte Fluminense', fontSize: 36, fontFamily: 'Aileron, Inter, Arial', fill: '#D5D5D5', width: 1000, lineHeight: 1.18, visible: true, opacity: 1 },
     },
   },
-  thumb: null, // Será gerado ao abrir no editor
-  baseImage: null, // Usa o canvaBaseImage.js padrão
+  thumb: null,
+  baseImage: null,
 };
 
 const TEMPLATES_KEY = 'ururau-my-templates-v1';
@@ -57,7 +36,5 @@ export function ensureSeedTemplate() {
     if (!has) {
       localStorage.setItem(TEMPLATES_KEY, JSON.stringify([SEED_TEMPLATE, ...all]));
     }
-  } catch (e) {
-    console.error('Erro ao criar seed template:', e);
-  }
+  } catch (e) { console.error(e); }
 }
