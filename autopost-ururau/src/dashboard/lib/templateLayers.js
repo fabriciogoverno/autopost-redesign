@@ -1,12 +1,20 @@
 /**
  * Definição das camadas editáveis do template Ururau Reels (1080×1920).
  *
- * Coordenadas EXATAS extraídas via Figma REST API:
- *   GET https://api.figma.com/v1/files/DzxX3v8CkEhkOBM3yePj3T
- *   (Codia AI Canva: Import Canva Designs to Editable Figma)
+ * O fundo é renderizado pela imagem base extraída direto do Canva via Figma API
+ * (lib/canvaBaseImage.js — file 42aGTHvkypbKFU8E0dUslt, node 1002:121).
+ * Esse PNG contém: logo "ururau" + "19 ANOS" + linhas douradas + círculo @ + gradient.
  *
- * Esse arquivo tem extração nativa do Canva (1:1) com cada camada
- * individualmente editável — mais preciso que pdf.to.design.
+ * As camadas Konva sobrepostas adicionam APENAS os elementos dinâmicos editáveis:
+ *   - Imagem da matéria (preenche o slot vazio do topo)
+ *   - Badge categoria (fundo + texto)
+ *   - Título
+ *   - Linha decorativa
+ *   - Subtítulo
+ *   - Watermark
+ *
+ * As camadas do logo continuam definidas (mas visible:false) caso o usuário
+ * queira editar manualmente — basta mostrar no painel Camadas.
  */
 
 export const CANVAS_W = 1080;
@@ -39,20 +47,21 @@ export const TEMPLATE_LAYERS = {
     defaults: { x: 0, y: 0, width: 1080, height: 1100 },
   },
 
-  // ===== GRADIENT OVERLAY =====
+  // ===== GRADIENT OVERLAY (desativado por padrão — o canva-base já tem o gradient) =====
   gradient_overlay: {
-    label: 'Gradiente (escurece base)',
+    label: 'Gradiente extra',
     kind: 'gradient-rect',
     defaults: {
       x: 0, y: 0, width: 1080, height: 1920,
       gradientStart: 0.42, gradientEnd: 0.60,
       colorTop: 'rgba(10,10,10,0)', colorMid: 'rgba(10,10,10,0.7)', colorBottom: 'rgba(10,10,10,1)',
+      visible: false,
     },
     locked: true,
   },
 
   // ============================================================
-  // LOGO URURAU (medidas via Codia AI)
+  // LOGO URURAU (camadas Konva — visible:false porque já está na base PNG)
   // ============================================================
   logo_ururau: {
     label: 'Logo · "ururau"',
@@ -61,12 +70,13 @@ export const TEMPLATE_LAYERS = {
       x: 608, y: 24, text: 'ururau', fontSize: 89,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: '900',
       fill: '#FFFFFF', width: 304, letterSpacing: -1,
+      visible: false,
     },
   },
   logo_line_left: {
     label: 'Logo · linha ouro ←',
     kind: 'rect',
-    defaults: { x: 617, y: 139, width: 64, height: 10, fill: '#FFDE59', cornerRadius: 3 },
+    defaults: { x: 617, y: 139, width: 64, height: 10, fill: '#FFDE59', cornerRadius: 3, visible: false },
   },
   logo_anos: {
     label: 'Logo · "19 anos"',
@@ -75,17 +85,18 @@ export const TEMPLATE_LAYERS = {
       x: 685, y: 123, text: '19 anos', fontSize: 42,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
       fill: '#FFDE59', letterSpacing: 1,
+      visible: false,
     },
   },
   logo_line_right: {
     label: 'Logo · linha ouro →',
     kind: 'rect',
-    defaults: { x: 848, y: 139, width: 64, height: 10, fill: '#FFDE59', cornerRadius: 3 },
+    defaults: { x: 848, y: 139, width: 64, height: 10, fill: '#FFDE59', cornerRadius: 3, visible: false },
   },
   logo_circle: {
     label: 'Logo · círculo @',
     kind: 'circle',
-    defaults: { x: 984, y: 105, radius: 58, fill: '#E63946' },
+    defaults: { x: 984, y: 105, radius: 58, fill: '#E63946', visible: false },
   },
   logo_at: {
     label: 'Logo · símbolo @',
@@ -94,11 +105,12 @@ export const TEMPLATE_LAYERS = {
       x: 935, y: 50, text: '@', fontSize: 95,
       fontFamily: 'Inter, Arial', fontStyle: 'bold',
       fill: '#FFFFFF', width: 100, align: 'center',
+      visible: false,
     },
   },
 
   // ============================================================
-  // BADGE CATEGORIA (frame x=67 y=1169 450×90)
+  // BADGE CATEGORIA
   // ============================================================
   category_bg: {
     label: 'Badge · fundo',
@@ -116,7 +128,7 @@ export const TEMPLATE_LAYERS = {
   },
 
   // ============================================================
-  // TÍTULO (#E4E4E4 cinza claro do original)
+  // TÍTULO
   // ============================================================
   title: {
     label: 'Título',
@@ -129,7 +141,7 @@ export const TEMPLATE_LAYERS = {
   },
 
   // ============================================================
-  // LINHA DECORATIVA VERMELHA (entre título e subtítulo)
+  // LINHA DECORATIVA VERMELHA
   // ============================================================
   separator: {
     label: 'Linha decorativa',
@@ -177,7 +189,7 @@ export const LAYER_ORDER = [
 
 export const LAYER_GROUPS = [
   { label: 'Estrutura', keys: ['frame_border', 'background', 'article_image', 'gradient_overlay'] },
-  { label: 'Logo Ururau', keys: ['logo_ururau', 'logo_line_left', 'logo_anos', 'logo_line_right', 'logo_circle', 'logo_at'] },
+  { label: 'Logo Ururau (já na base — opcional)', keys: ['logo_ururau', 'logo_line_left', 'logo_anos', 'logo_line_right', 'logo_circle', 'logo_at'] },
   { label: 'Categoria', keys: ['category_bg', 'category_text'] },
   { label: 'Conteúdo', keys: ['title', 'separator', 'summary'] },
   { label: 'Marca', keys: ['watermark'] },
