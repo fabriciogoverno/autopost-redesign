@@ -2,98 +2,67 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { History, FileText, PlusCircle, Trash2 } from 'lucide-react';
+import { Plus, FileText, Search } from 'lucide-react';
 
-const MY_TEMPLATES_KEY = 'ururau-my-templates-v1';
-const HISTORY_KEY = 'ururau-history-v1';
-
-function formatDate(d) {
-  return new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
+const TEMPLATES_KEY = 'ururau-my-templates-v1';
 
 export default function HistoryPage() {
-  const [items, setItems] = useState([]);
-  const [publishedHistory, setPublishedHistory] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
-      const t = JSON.parse(localStorage.getItem(MY_TEMPLATES_KEY) || '[]');
-      setItems(t);
-      const h = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-      setPublishedHistory(h);
+      const all = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '[]');
+      setPosts(all);
     } catch {}
   }, []);
 
-  function deleteItem(id) {
-    if (!confirm('Excluir este post do histórico?')) return;
-    const next = items.filter((it) => it.id !== id);
-    setItems(next);
-    try { localStorage.setItem(MY_TEMPLATES_KEY, JSON.stringify(next)); } catch {}
-  }
-
-  const totalPosts = items.length + publishedHistory.length;
+  const filtered = posts.filter((p) => !search || p.name?.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-5 animate-fade-up">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Histórico</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{totalPosts} {totalPosts === 1 ? 'post' : 'posts'}</p>
+          <h1 className="text-2xl font-bold text-foreground">Histórico</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{posts.length} {posts.length === 1 ? 'post' : 'posts'}</p>
         </div>
-        <Link href="/templates"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 shadow-soft">
-          <PlusCircle size={15} /> Criar Post
+        <Link href="/templates" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+          <span>+</span> Criar Post
         </Link>
       </div>
 
-      {totalPosts === 0 ? (
-        <div className="text-center py-24 bg-card border border-dashed border-border rounded-xl">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
-            <FileText size={28} className="text-primary" strokeWidth={1.5} />
+      {posts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center mb-4">
+            <FileText size={28} className="text-primary" />
           </div>
-          <p className="text-lg font-semibold text-foreground mb-1">Nenhum post ainda</p>
-          <p className="text-sm text-muted-foreground mb-5">Crie seu primeiro post para começar a divulgar suas notícias</p>
-          <Link href="/templates"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 shadow-soft">
-            <PlusCircle size={16} /> Criar primeiro post
+          <h2 className="text-base font-semibold text-foreground">Nenhum post ainda</h2>
+          <p className="text-sm text-muted-foreground mt-1 max-w-md">Crie seu primeiro post para começar a divulgar suas notícias</p>
+          <Link href="/templates" className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+            <Plus size={14} /> Criar primeiro post
           </Link>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-xl shadow-soft divide-y divide-border">
-          {items.map((it) => (
-            <div key={it.id} className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors">
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0"
-                style={{ background: it.accent ? `${it.accent}20` : 'hsl(var(--muted))' }}>
-                <FileText size={20} style={{ color: it.accent || 'hsl(var(--muted-foreground))' }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm truncate">{it.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {it.category && <span className="uppercase font-medium mr-2">{it.category}</span>}
-                  Criado em {formatDate(it.createdAt)}
-                </p>
-              </div>
-              <Link href={`/editor?id=${it.id}`}
-                className="px-3 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20">Editar</Link>
-              <button onClick={() => deleteItem(it.id)}
-                className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-md text-muted-foreground">
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-          {publishedHistory.map((p) => (
-            <div key={p.id} className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors">
-              <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center shrink-0">
-                <History size={20} className="text-success" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm truncate">{p.title || 'Post publicado'}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Publicado em {formatDate(p.publishedAt)}</p>
-              </div>
-              <span className="px-2 py-1 rounded text-[10px] font-bold bg-success/10 text-success border border-success/20">PUBLICADO</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="relative max-w-md">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar posts..." className="w-full bg-white border border-border rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {filtered.map((p) => (
+              <Link key={p.id} href={`/posts/${p.id}`} className="bg-white border border-border rounded-xl hover:shadow-md transition-all overflow-hidden">
+                <div className="aspect-[9/16] bg-gray-50">
+                  {p.thumb ? <img src={p.thumb} alt={p.name} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center text-muted-foreground"><FileText size={32} /></div>}
+                </div>
+                <div className="p-3 border-t border-gray-100">
+                  <p className="text-sm font-medium truncate">{p.name}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(p.createdAt).toLocaleDateString('pt-BR')}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
