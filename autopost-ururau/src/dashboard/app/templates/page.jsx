@@ -29,6 +29,11 @@ const CATEGORIES = [
 ];
 
 function TemplateThumb({ tpl }) {
+  // Se tem snapshot real (template salvo do editor), usa imagem
+  if (tpl.thumb) {
+    return <img src={tpl.thumb} alt={tpl.name} className="w-full h-full object-cover block" />;
+  }
+  // Senão, mostra mockup SVG
   return (
     <svg viewBox="0 0 270 480" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
       <defs>
@@ -124,19 +129,25 @@ export default function TemplatesPage() {
             Escolha um template para personalizar e adicionar à sua biblioteca.
           </p>
         </div>
-        <div className="flex bg-muted rounded-lg p-1">
-          <button onClick={() => setTab('meus')}
-            className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-all ${
-              tab === 'meus' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
-            }`}>
-            Meus Templates ({myTemplates.length})
-          </button>
-          <button onClick={() => setTab('biblioteca')}
-            className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-all ${
-              tab === 'biblioteca' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
-            }`}>
-            Biblioteca
-          </button>
+        <div className="flex items-center gap-2">
+          <Link href="/editor"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+            <Plus size={14} /> Novo Template
+          </Link>
+          <div className="flex bg-muted rounded-lg p-1">
+            <button onClick={() => setTab('meus')}
+              className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-all ${
+                tab === 'meus' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
+              }`}>
+              Meus Templates ({myTemplates.length})
+            </button>
+            <button onClick={() => setTab('biblioteca')}
+              className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-all ${
+                tab === 'biblioteca' ? 'bg-card text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground'
+              }`}>
+              Biblioteca
+            </button>
+          </div>
         </div>
       </div>
 
@@ -190,11 +201,17 @@ export default function TemplatesPage() {
             <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
               <Layers size={36} className="mx-auto text-muted-foreground mb-3" />
               <p className="text-sm font-medium text-foreground mb-1">Você ainda não tem templates salvos</p>
-              <p className="text-xs text-muted-foreground mb-4">Adicione um da biblioteca para começar.</p>
-              <button onClick={() => setTab('biblioteca')}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
-                <Plus size={14} /> Ir para a biblioteca
-              </button>
+              <p className="text-xs text-muted-foreground mb-4">Crie um novo no editor ou adicione um da biblioteca.</p>
+              <div className="flex items-center justify-center gap-2">
+                <Link href="/editor"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+                  <Plus size={14} /> Criar no editor
+                </Link>
+                <button onClick={() => setTab('biblioteca')}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">
+                  Ir para a biblioteca
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
