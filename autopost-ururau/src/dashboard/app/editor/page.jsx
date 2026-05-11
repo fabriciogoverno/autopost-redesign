@@ -9,7 +9,7 @@ import {
   Loader2, Lock, Unlock, EyeOff, AlertCircle, Globe, Send, FileText,
 } from 'lucide-react';
 import { proxiedUrl, loadVisualIdentity } from '@/lib/imgProxy';
-import { TEMPLATE_LAYERS, LAYER_ORDER, LAYER_GROUPS, CATEGORY_COLORS } from '@/lib/templateLayers';
+import { TEMPLATE_LAYERS, LAYER_ORDER, LAYER_GROUPS, CATEGORY_COLORS, exportTemplate, importTemplate } from '@/lib/templateLayers';
 
 export default function EditorWrapper() {
   return (
@@ -29,6 +29,7 @@ function EditorPage() {
   const nodesRef = useRef({});
   const undoStackRef = useRef([]);
   const articleImgRef = useRef(null);
+  const baseImgRef = useRef(null);
 
   const [konvaReady, setKonvaReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
@@ -47,7 +48,6 @@ function EditorPage() {
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500); }
   function showError(msg) { setError(msg); setTimeout(() => setError(null), 3500); }
 
-  // === Konva loader ===
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.Konva) { setKonvaReady(true); return; }
@@ -59,7 +59,6 @@ function EditorPage() {
     document.head.appendChild(s);
   }, []);
 
-  // === pdf.js ===
   useEffect(() => {
     if (typeof window === 'undefined' || window.pdfjsLib) return;
     const s = document.createElement('script');
@@ -73,18 +72,18 @@ function EditorPage() {
     document.head.appendChild(s);
   }, []);
 
-  // === Fontes ===
   useEffect(() => {
     if (typeof window === 'undefined' || !('fonts' in document)) { setFontReady(true); return; }
     const safety = setTimeout(() => setFontReady(true), 4000);
     Promise.all([
-      document.fonts.load('800 80px "Aileron"'),
-      document.fonts.load('700 36px "Aileron"'),
-      document.fonts.load('400 32px "Aileron"'),
+      document.fonts.load('900 89px "Aileron"'),
+      document.fonts.load('900 85px "Aileron"'),
+      document.fonts.load('bold 56px "Aileron"'),
+      document.fonts.load('bold 42px "Aileron"'),
+      document.fonts.load('400 43px "Aileron"'),
     ]).finally(() => { clearTimeout(safety); setFontReady(true); });
   }, []);
 
-  // === Init Konva ===
   useEffect(() => {
     if (!konvaReady || !fontReady || stageRef.current) return;
     const Konva = window.Konva;
@@ -96,12 +95,12 @@ function EditorPage() {
     stageRef.current = stage;
     layerRef.current = layer;
     buildAllLayers();
+    restoreZOrder();
     stage.on('click tap', (e) => { if (e.target === stage) deselect(); });
     layer.draw();
     refresh();
   }, [konvaReady, fontReady]);
 
-  // === Scale ===
   useEffect(() => {
     if (!stageRef.current) return;
     stageRef.current.scale({ x: scale, y: scale });
@@ -110,7 +109,6 @@ function EditorPage() {
     layerRef.current?.batchDraw();
   }, [scale]);
 
-  // === Atalhos ===
   useEffect(() => {
     function onKey(e) {
       const t = e.target.tagName;
@@ -155,6 +153,39 @@ function EditorPage() {
     });
   }
 
+  // ====================================================
+  // CRÍTICO: garante ordem correta das camadas SEMPRE.
+  // Após adicionar imagem real, base template, etc, isso
+  // reposiciona TUDO conforme LAYER_ORDER + items extras
+  // no topo (imagem real, base imp, etc).
+  // ====================================================
+  function restoreZOrder() {
+    const layer = layerRef.current;
+    if (!layer) return;
+    // 1) Article image real fica logo acima do slot (entre slot e gradient)
+    const articleSlot = nodesRef.current.article_image;
+    const realArticle = layer.findOne('.article-image-actual');
+    // 2) Base template (imported PDF/PNG do Canva) fica acima do gradient
+    const baseTemplate = layer.findOne('.base-template');
+    // 3) Reordena tudo via zIndex
+    let z = 0;
+    for (const key of LAYER_ORDER) {
+      const n = nodesRef.current[key];
+      if (n) {
+        n.zIndex(z++);
+      }
+      // Inserir realArticle logo após article_image slot
+      if (key === 'article_image' && realArticle) {
+        realArticle.zIndex(z++);
+      }
+      // Inserir baseTemplate logo após gradient_overlay
+      if (key === 'gradient_overlay' && baseTemplate) {
+        baseTemplate.zIndex(z++);
+      }
+    }
+    layer.draw();
+  }
+
   function createNode(Konva, key, def) {
     const d = def.defaults;
     const base = { name: key, id: key, draggable: d.listening !== false };
@@ -167,14 +198,12 @@ function EditorPage() {
         return new Konva.Circle({ ...base, x: d.x, y: d.y, radius: d.radius, fill: d.fill });
       case 'text':
         return new Konva.Text({ ...base, ...d });
-      case 'image-slot': {
-        // Slot vazio: rect com hachura suave indicando área da imagem
+      case 'image-slot':
         return new Konva.Rect({
           ...base, x: d.x, y: d.y, width: d.width, height: d.height,
           fill: 'rgba(255,255,255,0.04)', stroke: 'rgba(255,255,255,0.15)',
           strokeWidth: 2, dash: [12, 8], listening: false,
         });
-      }
       case 'gradient-rect':
         return new Konva.Rect({
           ...base, x: d.x, y: d.y, width: d.width, height: d.height,
@@ -252,11 +281,10 @@ function EditorPage() {
     a.addEventListener('blur', () => {
       saveUndo();
       node.text(a.value);
-      // Auto-ajustar bg do badge ao trocar texto da categoria
       if (key === 'category_text') {
         const bg = nodesRef.current.category_bg;
         if (bg) {
-          const newW = Math.max(a.value.length * 22 + 60, 180);
+          const newW = Math.max(a.value.length * 28 + 70, 220);
           bg.width(newW);
           const color = CATEGORY_COLORS[a.value.toUpperCase()];
           if (color) bg.fill(color);
@@ -366,17 +394,15 @@ function EditorPage() {
       const layer = layerRef.current;
       const slot = nodesRef.current.article_image;
       if (!slot || !layer) return;
-      // Remove old image
       const old = layer.findOne('.article-image-actual');
       if (old) old.destroy();
-      // Add image on top of slot
       const imgNode = new Konva.Image({
         x: slot.x(), y: slot.y(), width: slot.width(), height: slot.height(),
         image: img, name: 'article-image-actual', listening: false,
       });
       layer.add(imgNode);
-      imgNode.zIndex(slot.zIndex() + 1);
-      layer.draw();
+      restoreZOrder();
+      showToast('Imagem da matéria atualizada');
     };
     img.onerror = () => showError('Falha ao carregar imagem');
     img.src = proxiedUrl(src);
@@ -393,20 +419,16 @@ function EditorPage() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Erro');
 
-      const titleNode = nodesRef.current.title;
-      const summaryNode = nodesRef.current.summary;
-      const catText = nodesRef.current.category_text;
-      const catBg = nodesRef.current.category_bg;
-
-      if (titleNode && d.title) titleNode.text(d.title);
-      if (summaryNode && d.summary) summaryNode.text(d.summary);
-      if (catText && d.category) {
+      if (nodesRef.current.title && d.title) nodesRef.current.title.text(d.title);
+      if (nodesRef.current.summary && d.summary) nodesRef.current.summary.text(d.summary);
+      if (nodesRef.current.category_text && d.category) {
         const t = d.category.toUpperCase();
-        catText.text(t);
-        if (catBg) {
-          const newW = Math.max(t.length * 22 + 60, 180);
-          catBg.width(newW);
-          if (CATEGORY_COLORS[t]) catBg.fill(CATEGORY_COLORS[t]);
+        nodesRef.current.category_text.text(t);
+        const bg = nodesRef.current.category_bg;
+        if (bg) {
+          const newW = Math.max(t.length * 28 + 70, 220);
+          bg.width(newW);
+          if (CATEGORY_COLORS[t]) bg.fill(CATEGORY_COLORS[t]);
         }
       }
       if (d.image) setArticleImageURL(d.image);
@@ -418,30 +440,32 @@ function EditorPage() {
   }
 
   function handleSave() {
-    const state = {};
-    Object.entries(nodesRef.current).forEach(([k, n]) => {
-      state[k] = { x: Math.round(n.x()), y: Math.round(n.y()), visible: n.visible() };
-      if (n.getClassName() === 'Text') {
-        state[k].text = n.text();
-        state[k].fontSize = n.fontSize();
-        state[k].fill = n.fill();
-      }
-      if (n.getClassName() === 'Rect') {
-        state[k].width = Math.round(n.width());
-        state[k].height = Math.round(n.height());
-        state[k].fill = n.fill();
-      }
-    });
+    const state = exportTemplate(nodesRef.current);
     try { localStorage.setItem(`ururau-tpl-${templateId || 'novo'}`, JSON.stringify(state)); } catch {}
     showToast('Template salvo no navegador');
+  }
+
+  function downloadJSON() {
+    const state = exportTemplate(nodesRef.current);
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `template-${Date.now()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
   }
 
   function exportPNG() {
     if (!stageRef.current) return;
     const layer = layerRef.current;
     layer.find('.selection-indicator').forEach((i) => i.visible(false));
+    // Esconde o slot dashed
+    const slot = nodesRef.current.article_image;
+    const slotVis = slot?.visible();
+    if (slot) slot.visible(false);
     layer.draw();
     const url = stageRef.current.toDataURL({ pixelRatio: 1, mimeType: 'image/png', width: 1080, height: 1920 });
+    if (slot) slot.visible(slotVis);
     layer.find('.selection-indicator').forEach((i) => i.visible(true));
     layer.draw();
     const a = document.createElement('a');
@@ -473,6 +497,7 @@ function EditorPage() {
     const Konva = window.Konva;
     const img = new window.Image();
     img.onload = () => {
+      baseImgRef.current = img;
       const layer = layerRef.current;
       const old = layer.findOne('.base-template');
       if (old) old.destroy();
@@ -481,10 +506,7 @@ function EditorPage() {
         image: img, name: 'base-template', listening: false,
       });
       layer.add(baseImg);
-      // Above gradient, below interactive layers
-      const grad = nodesRef.current.gradient_overlay;
-      if (grad) baseImg.zIndex(grad.zIndex() + 1);
-      layer.draw();
+      restoreZOrder();
       showToast('Template base aplicado');
     };
     img.src = dataURL;
@@ -502,7 +524,6 @@ function EditorPage() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background">
-      {/* Topbar */}
       <header className="h-14 border-b border-border bg-card flex items-center px-3 gap-2 shrink-0">
         <button onClick={() => router.push('/templates')} className="p-1.5 hover:bg-muted rounded"><X size={18} /></button>
         <div className="flex items-center gap-2">
@@ -526,8 +547,11 @@ function EditorPage() {
         <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90">
           <Save size={11} /> Salvar
         </button>
+        <button onClick={downloadJSON} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted text-foreground text-xs font-semibold hover:bg-muted/80" title="Exportar template como JSON">
+          <FileText size={11} />
+        </button>
         <button onClick={exportPNG} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-success text-success-foreground text-xs font-semibold hover:opacity-90">
-          <Send size={11} /> Exportar PNG
+          <Send size={11} /> PNG
         </button>
       </header>
 
@@ -535,7 +559,6 @@ function EditorPage() {
       {toast && <div className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg bg-success text-success-foreground shadow-card text-sm font-medium animate-fade-up">✓ {toast}</div>}
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar de ferramentas */}
         <nav className="w-16 bg-card border-r border-border flex flex-col items-center py-3 gap-1 shrink-0">
           {[
             { id: 'camadas',  label: 'Camadas',  icon: LayersIcon },
@@ -557,7 +580,6 @@ function EditorPage() {
           })}
         </nav>
 
-        {/* Painel esquerdo (depende do tool) */}
         <div className="w-72 bg-card border-r border-border overflow-y-auto">
           {tool === 'camadas' && (
             <div className="p-2 space-y-2">
@@ -591,10 +613,10 @@ function EditorPage() {
                               <button onClick={() => selectElement(key)} className="flex-1 text-left truncate">
                                 {def.label}
                               </button>
-                              <button onClick={() => toggleVisibility(key)} className="p-0.5 hover:bg-card rounded" title="Mostrar/ocultar">
+                              <button onClick={() => toggleVisibility(key)} className="p-0.5 hover:bg-card rounded">
                                 {visible ? <Eye size={10} /> : <EyeOff size={10} className="text-muted-foreground" />}
                               </button>
-                              <button onClick={() => toggleLock(key)} className="p-0.5 hover:bg-card rounded" title="Bloquear">
+                              <button onClick={() => toggleLock(key)} className="p-0.5 hover:bg-card rounded">
                                 {locked ? <Lock size={10} className="text-warning" /> : <Unlock size={10} />}
                               </button>
                             </div>
@@ -651,7 +673,6 @@ function EditorPage() {
           )}
         </div>
 
-        {/* Canvas */}
         <div className="flex-1 overflow-auto bg-muted/30 p-6">
           {(!konvaReady || !fontReady) && (
             <div className="flex items-center justify-center h-96 text-muted-foreground text-sm">
@@ -663,7 +684,6 @@ function EditorPage() {
             style={{ width: 1080 * scale, height: 1920 * scale, background: '#0a0a0a' }} />
         </div>
 
-        {/* Painel direito: Propriedades */}
         <div className="w-80 bg-card border-l border-border overflow-y-auto">
           <div className="p-3 border-b border-border">
             <h3 className="text-xs font-bold uppercase text-muted-foreground">Propriedades</h3>
@@ -677,7 +697,6 @@ function EditorPage() {
                   {def?.label || selectedKey}
                 </div>
 
-                {/* Visibilidade + Lock + Move */}
                 <div className="flex items-center gap-1">
                   <button onClick={() => toggleVisibility(selectedKey)} className="flex-1 py-1.5 rounded bg-muted text-[10px] font-semibold hover:bg-muted/80">
                     {node.visible() ? 'Ocultar' : 'Mostrar'}
@@ -685,18 +704,11 @@ function EditorPage() {
                   <button onClick={() => toggleLock(selectedKey)} className="flex-1 py-1.5 rounded bg-muted text-[10px] font-semibold hover:bg-muted/80">
                     {node.draggable() ? 'Bloquear' : 'Liberar'}
                   </button>
-                  <button onClick={() => moveLayer(selectedKey, 'up')} className="p-1.5 rounded bg-muted hover:bg-muted/80" title="Pra frente">
-                    <ArrowUp size={11} />
-                  </button>
-                  <button onClick={() => moveLayer(selectedKey, 'down')} className="p-1.5 rounded bg-muted hover:bg-muted/80" title="Pra trás">
-                    <ArrowDown size={11} />
-                  </button>
-                  <button onClick={() => resetLayer(selectedKey)} className="p-1.5 rounded bg-warning/10 text-warning hover:bg-warning/20" title="Resetar">
-                    <Undo2 size={11} />
-                  </button>
+                  <button onClick={() => moveLayer(selectedKey, 'up')} className="p-1.5 rounded bg-muted hover:bg-muted/80"><ArrowUp size={11} /></button>
+                  <button onClick={() => moveLayer(selectedKey, 'down')} className="p-1.5 rounded bg-muted hover:bg-muted/80"><ArrowDown size={11} /></button>
+                  <button onClick={() => resetLayer(selectedKey)} className="p-1.5 rounded bg-warning/10 text-warning hover:bg-warning/20"><Undo2 size={11} /></button>
                 </div>
 
-                {/* Posição */}
                 <Section title="Posição">
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="X"><NumInput value={Math.round(node.x())} onChange={(v) => updateProp('x', v)} /></Field>
@@ -704,7 +716,6 @@ function EditorPage() {
                   </div>
                 </Section>
 
-                {/* Tamanho */}
                 {(nodeType === 'Text' || nodeType === 'Rect') && (
                   <Section title="Tamanho">
                     <div className="grid grid-cols-2 gap-2">
@@ -714,14 +725,12 @@ function EditorPage() {
                   </Section>
                 )}
 
-                {/* Círculo */}
                 {nodeType === 'Circle' && (
                   <Section title="Raio">
                     <NumInput value={Math.round(node.radius())} onChange={(v) => updateProp('radius', v)} />
                   </Section>
                 )}
 
-                {/* Texto */}
                 {nodeType === 'Text' && (
                   <>
                     <Section title="Texto">
@@ -744,7 +753,6 @@ function EditorPage() {
                   </>
                 )}
 
-                {/* Forma */}
                 {(nodeType === 'Rect' || nodeType === 'Circle') && (
                   <>
                     <Section title="Cor de preenchimento">
@@ -759,13 +767,11 @@ function EditorPage() {
                   </>
                 )}
 
-                {/* Opacidade */}
                 <Section title={`Opacidade · ${Math.round(node.opacity() * 100)}%`}>
                   <input type="range" min="0" max="1" step="0.05" value={node.opacity()}
                     onChange={(e) => updateProp('opacity', e.target.value)} className="w-full accent-primary" />
                 </Section>
 
-                {/* Badge especial: paleta */}
                 {selectedKey === 'category_bg' && (
                   <Section title="Cores rápidas por categoria">
                     <div className="grid grid-cols-6 gap-1">
@@ -783,7 +789,6 @@ function EditorPage() {
         </div>
       </div>
 
-      {/* Footer */}
       <footer className="h-11 border-t border-border bg-card flex items-center px-4 gap-3 shrink-0">
         <button onClick={() => setScale((s) => Math.max(0.1, s - 0.05))} className="p-1.5 hover:bg-muted rounded"><ZoomOut size={13} /></button>
         <input type="range" min="0.1" max="1" step="0.05" value={scale} onChange={(e) => setScale(parseFloat(e.target.value))} className="w-32 accent-primary" />
