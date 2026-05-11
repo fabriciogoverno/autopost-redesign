@@ -12,6 +12,8 @@ import { proxiedUrl, loadVisualIdentity } from '@/lib/imgProxy';
 import { TEMPLATE_LAYERS, LAYER_ORDER, LAYER_GROUPS, CATEGORY_COLORS, exportTemplate, importTemplate } from '@/lib/templateLayers';
 import { CANVA_BASE_IMAGE } from '@/lib/canvaBaseImage';
 
+const TEMPLATES_KEY = 'ururau-my-templates-v1';
+
 export default function EditorWrapper() {
   return (
     <Suspense fallback={<div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>}>
@@ -31,6 +33,8 @@ function EditorPage() {
   const undoStackRef = useRef([]);
   const articleImgRef = useRef(null);
   const baseImgRef = useRef(null);
+  const baseDataURLRef = useRef(CANVA_BASE_IMAGE);
+  const transformerRef = useRef(null);
 
   const [konvaReady, setKonvaReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
@@ -38,6 +42,7 @@ function EditorPage() {
   const [scale, setScale] = useState(0.32);
   const [tool, setTool] = useState('camadas');
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [templateName, setTemplateName] = useState('Meu Template');
 
   const [materiaUrl, setMateriaUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
@@ -47,7 +52,7 @@ function EditorPage() {
   const refresh = () => force((n) => n + 1);
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500); }
-  function showError(msg) { setError(msg); setTimeout(() => setError(null), 3500); }
+  function showError(msg) { setError(msg); setTimeout(() => setError(null), 5000); }
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -85,6 +90,25 @@ function EditorPage() {
     ]).finally(() => { clearTimeout(safety); setFontReady(true); });
   }, []);
 
+  // ---- Carregar template salvo se chegou pelo /editor?id=mine_xxx ----
+  useEffect(() => {
+    if (!konvaReady || !templateId || !templateId.startsWith('mine_')) return;
+    try {
+      const all = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '[]');
+      const found = all.find((t) => t.id === templateId);
+      if (found) {
+        setTemplateName(found.name || 'Meu Template');
+        if (found.baseImage) {
+          baseDataURLRef.current = found.baseImage;
+        }
+        if (found.state && nodesRef.current) {
+          // Aplica state depois que as camadas existirem
+          setTimeout(() => importTemplate(nodesRef.current, found.state), 500);
+        }
+      }
+    } catch (e) { console.error('Erro ao carregar template:', e); }
+  }, [konvaReady, templateId]);
+
   useEffect(() => {
     if (!konvaReady || !fontReady || stageRef.current) return;
     const Konva = window.Konva;
@@ -96,11 +120,26 @@ function EditorPage() {
     stageRef.current = stage;
     layerRef.current = layer;
     buildAllLayers();
-    // CRÍTICO: carrega a arte do Canva (extraída via Figma API) como base visual.
-    // Sem isso, o editor abre só com camadas Konva — com isso, abre IDÊNTICO ao Canva original.
-    applyBase(CANVA_BASE_IMAGE);
+    applyBase(baseDataURLRef.current);
     restoreZOrder();
-    stage.on('click tap', (e) => { if (e.target === stage) deselect(); });
+    // Transformer reutilizável para a imagem da matéria
+    const tr = new Konva.Transformer({
+      enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center'],
+      borderStroke: '#2563EB', borderStrokeWidth: 2, borderDash: [8, 4],
+      anchorStroke: '#2563EB', anchorFill: '#FFFFFF', anchorStrokeWidth: 2, anchorSize: 14,
+      keepRatio: false, rotateEnabled: false,
+    });
+    layer.add(tr);
+    transformerRef.current = tr;
+    stage.on('click tap', (e) => {
+      if (e.target === stage) { deselect(); tr.nodes([]); layer.draw(); return; }
+      // Se clicou na imagem da matéria, ativa o transformer
+      if (e.target.name() === 'article-image-actual') {
+        tr.nodes([e.target]); layer.draw();
+      } else if (!e.target.hasName('selection-indicator')) {
+        tr.nodes([]); layer.draw();
+      }
+    });
     layer.draw();
     refresh();
   }, [konvaReady, fontReady]);
@@ -157,16 +196,12 @@ function EditorPage() {
     });
   }
 
-  // ====================================================
-  // Garante ordem correta das camadas SEMPRE.
-  // base-template (PNG do Canva) fica logo após gradient_overlay.
-  // article-image-actual (imagem da matéria) fica entre slot e gradient.
-  // ====================================================
   function restoreZOrder() {
     const layer = layerRef.current;
     if (!layer) return;
     const realArticle = layer.findOne('.article-image-actual');
     const baseTemplate = layer.findOne('.base-template');
+    const tr = transformerRef.current;
     let z = 0;
     for (const key of LAYER_ORDER) {
       const n = nodesRef.current[key];
@@ -174,6 +209,7 @@ function EditorPage() {
       if (key === 'article_image' && realArticle) realArticle.zIndex(z++);
       if (key === 'gradient_overlay' && baseTemplate) baseTemplate.zIndex(z++);
     }
+    if (tr) tr.moveToTop();
     layer.draw();
   }
 
@@ -251,6 +287,28 @@ function EditorPage() {
     layerRef.current.draw();
   }
 
+  // ====================================================
+  // CENTRALIZA O TEXTO DENTRO DO BADGE SEMPRE
+  // ====================================================
+  function centerBadge() {
+    const txt = nodesRef.current.category_text;
+    const bg = nodesRef.current.category_bg;
+    if (!txt || !bg) return;
+    // Mede a largura real do texto renderizado
+    const textW = txt.getTextWidth ? txt.getTextWidth() : (txt.text().length * (txt.fontSize() * 0.55));
+    const padX = 28;
+    const padY = 12;
+    const newW = Math.max(textW + padX * 2, 220);
+    const fs = txt.fontSize();
+    const newH = fs + padY * 2;
+    bg.width(newW);
+    bg.height(newH);
+    // Centra texto dentro do retângulo
+    txt.x(bg.x() + (newW - textW) / 2);
+    txt.y(bg.y() + (newH - fs) / 2 - 2);
+    layerRef.current?.draw();
+  }
+
   function editTextInline(node, key) {
     const stage = stageRef.current;
     const sb = stage.container().getBoundingClientRect();
@@ -273,13 +331,10 @@ function EditorPage() {
       saveUndo();
       node.text(a.value);
       if (key === 'category_text') {
+        const color = CATEGORY_COLORS[a.value.toUpperCase()];
         const bg = nodesRef.current.category_bg;
-        if (bg) {
-          const newW = Math.max(a.value.length * 28 + 70, 220);
-          bg.width(newW);
-          const color = CATEGORY_COLORS[a.value.toUpperCase()];
-          if (color) bg.fill(color);
-        }
+        if (bg && color) bg.fill(color);
+        centerBadge();
       }
       layerRef.current.draw();
       refreshSel(key);
@@ -303,9 +358,11 @@ function EditorPage() {
       n.opacity(parseFloat(value));
     } else if (prop === 'text') {
       n.text(value);
+      if (selectedKey === 'category_text') centerBadge();
     } else {
       n.setAttr(prop, value);
     }
+    if (selectedKey === 'category_text' || selectedKey === 'category_bg') centerBadge();
     layerRef.current?.draw();
     refreshSel();
     refresh();
@@ -376,6 +433,9 @@ function EditorPage() {
     refresh();
   }
 
+  // ====================================================
+  // IMAGEM DA MATÉRIA: cover-fit + drag + transformer
+  // ====================================================
   function setArticleImageURL(src) {
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
@@ -387,15 +447,38 @@ function EditorPage() {
       if (!slot || !layer) return;
       const old = layer.findOne('.article-image-actual');
       if (old) old.destroy();
+
+      // COVER FIT: escala a imagem para cobrir todo o slot mantendo proporção
+      const slotW = slot.width();
+      const slotH = slot.height();
+      const ratioImg = img.width / img.height;
+      const ratioSlot = slotW / slotH;
+      let drawW, drawH, offX, offY;
+      if (ratioImg > ratioSlot) {
+        // imagem mais larga: ajusta altura, centra horizontal
+        drawH = slotH;
+        drawW = slotH * ratioImg;
+        offX = slot.x() - (drawW - slotW) / 2;
+        offY = slot.y();
+      } else {
+        // imagem mais alta: ajusta largura, centra vertical
+        drawW = slotW;
+        drawH = slotW / ratioImg;
+        offX = slot.x();
+        offY = slot.y() - (drawH - slotH) / 2;
+      }
       const imgNode = new Konva.Image({
-        x: slot.x(), y: slot.y(), width: slot.width(), height: slot.height(),
-        image: img, name: 'article-image-actual', listening: false,
+        x: offX, y: offY, width: drawW, height: drawH,
+        image: img, name: 'article-image-actual',
+        draggable: true, listening: true,
       });
+      // Clipa a imagem ao slot ao desenhar (não vaza pelas bordas no PNG final)
+      imgNode.dragBoundFunc(function(pos) { return pos; }); // permite arrastar livre
       layer.add(imgNode);
       restoreZOrder();
-      showToast('Imagem da matéria atualizada');
+      showToast('Imagem inserida — clique nela para redimensionar');
     };
-    img.onerror = () => showError('Falha ao carregar imagem');
+    img.onerror = () => showError('Falha ao carregar imagem. Tente upload manual.');
     img.src = proxiedUrl(src);
   }
 
@@ -407,8 +490,13 @@ function EditorPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: materiaUrl }),
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || 'Erro');
+      const ct = res.headers.get('content-type') || '';
+      const d = ct.includes('json') ? await res.json() : { error: await res.text() };
+      if (!res.ok) {
+        console.error('Extract response:', res.status, d);
+        throw new Error(d.error || `HTTP ${res.status} ao extrair matéria`);
+      }
+      console.log('Extract success:', d);
 
       if (nodesRef.current.title && d.title) nodesRef.current.title.text(d.title);
       if (nodesRef.current.summary && d.summary) nodesRef.current.summary.text(d.summary);
@@ -416,24 +504,58 @@ function EditorPage() {
         const t = d.category.toUpperCase();
         nodesRef.current.category_text.text(t);
         const bg = nodesRef.current.category_bg;
-        if (bg) {
-          const newW = Math.max(t.length * 28 + 70, 220);
-          bg.width(newW);
-          if (CATEGORY_COLORS[t]) bg.fill(CATEGORY_COLORS[t]);
-        }
+        if (bg && CATEGORY_COLORS[t]) bg.fill(CATEGORY_COLORS[t]);
+        centerBadge();
       }
       if (d.image) setArticleImageURL(d.image);
       layerRef.current?.draw();
-      showToast(`Matéria extraída`);
+      showToast('Matéria extraída com sucesso');
     } catch (err) {
-      showError('Erro: ' + err.message);
+      console.error('Extract error:', err);
+      showError('Erro extraindo: ' + err.message);
     } finally { setExtracting(false); }
   }
 
+  // ====================================================
+  // SALVAR: persiste template completo (state + base + thumbnail)
+  // na biblioteca Meus Templates
+  // ====================================================
   function handleSave() {
+    if (!stageRef.current) return;
     const state = exportTemplate(nodesRef.current);
-    try { localStorage.setItem(`ururau-tpl-${templateId || 'novo'}`, JSON.stringify(state)); } catch {}
-    showToast('Template salvo no navegador');
+    // Snapshot PNG para usar como thumbnail
+    const tr = transformerRef.current;
+    if (tr) tr.nodes([]);
+    layerRef.current?.find('.selection-indicator').forEach((i) => i.visible(false));
+    const slot = nodesRef.current.article_image;
+    const slotVis = slot?.visible();
+    if (slot) slot.visible(false);
+    layerRef.current?.draw();
+    const thumb = stageRef.current.toDataURL({
+      pixelRatio: 0.3, mimeType: 'image/jpeg', quality: 0.7,
+      width: 1080, height: 1920,
+    });
+    if (slot) slot.visible(slotVis);
+    layerRef.current?.find('.selection-indicator').forEach((i) => i.visible(true));
+    layerRef.current?.draw();
+
+    const isEdit = templateId && templateId.startsWith('mine_');
+    const id = isEdit ? templateId : `mine_${Date.now()}`;
+    const entry = {
+      id, name: templateName, accent: nodesRef.current.category_bg?.fill() || '#E63946',
+      category: 'noticia', preview: 'custom', sourceId: 'editor',
+      createdAt: new Date().toISOString(),
+      state, baseImage: baseDataURLRef.current, thumb,
+    };
+    try {
+      const all = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '[]');
+      const filtered = all.filter((t) => t.id !== id);
+      localStorage.setItem(TEMPLATES_KEY, JSON.stringify([entry, ...filtered]));
+      showToast(isEdit ? 'Template atualizado em Meus Templates' : 'Template salvo em Meus Templates');
+    } catch (e) {
+      console.error(e);
+      showError('Erro ao salvar: ' + e.message);
+    }
   }
 
   function downloadJSON() {
@@ -449,6 +571,8 @@ function EditorPage() {
   function exportPNG() {
     if (!stageRef.current) return;
     const layer = layerRef.current;
+    const tr = transformerRef.current;
+    if (tr) tr.nodes([]);
     layer.find('.selection-indicator').forEach((i) => i.visible(false));
     const slot = nodesRef.current.article_image;
     const slotVis = slot?.visible();
@@ -474,7 +598,7 @@ function EditorPage() {
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width; canvas.height = viewport.height;
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-        applyBase(canvas.toDataURL('image/png'));
+        applyBase(canvas.toDataURL('image/jpeg', 0.88));
       } catch (err) { showError('Erro PDF: ' + err.message); }
     } else {
       const r = new FileReader();
@@ -484,6 +608,7 @@ function EditorPage() {
   }
 
   function applyBase(dataURL) {
+    baseDataURLRef.current = dataURL;
     const Konva = window.Konva;
     const img = new window.Image();
     img.onload = () => {
@@ -517,8 +642,8 @@ function EditorPage() {
         <button onClick={() => router.push('/templates')} className="p-1.5 hover:bg-muted rounded"><X size={18} /></button>
         <div className="flex items-center gap-2">
           <Sparkles size={14} className="text-primary" />
-          <span className="font-bold text-sm">Editor</span>
-          <span className="text-[10px] text-muted-foreground font-mono">#{templateId || 'novo'}</span>
+          <input value={templateName} onChange={(e) => setTemplateName(e.target.value)}
+            className="font-bold text-sm bg-transparent border-b border-transparent focus:border-primary outline-none px-1 w-44" />
         </div>
         <div className="flex-1 flex items-center gap-2 max-w-2xl mx-3">
           <Globe size={13} className="text-muted-foreground shrink-0" />
@@ -536,7 +661,7 @@ function EditorPage() {
         <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90">
           <Save size={11} /> Salvar
         </button>
-        <button onClick={downloadJSON} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted text-foreground text-xs font-semibold hover:bg-muted/80" title="Exportar template como JSON">
+        <button onClick={downloadJSON} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted text-foreground text-xs font-semibold hover:bg-muted/80" title="Exportar JSON">
           <FileText size={11} />
         </button>
         <button onClick={exportPNG} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-success text-success-foreground text-xs font-semibold hover:opacity-90">
@@ -622,10 +747,10 @@ function EditorPage() {
           {tool === 'imagens' && (
             <div className="p-3 space-y-3">
               <h3 className="text-xs font-bold uppercase text-muted-foreground">Imagem da matéria</h3>
+              <p className="text-[10px] text-muted-foreground">Após inserir, clique na imagem para arrastar e redimensionar com 8 alças.</p>
               <label className="cursor-pointer block w-full border-2 border-dashed border-border rounded-lg p-5 text-center hover:bg-muted/30">
                 <ImgIcon size={20} className="mx-auto mb-2 text-muted-foreground" />
                 <p className="text-xs font-semibold">Enviar do PC</p>
-                <p className="text-[10px] text-muted-foreground mt-1">Preenche o slot da matéria</p>
                 <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files[0] && uploadArticleImage(e.target.files[0])} />
               </label>
               <button onClick={() => {
@@ -640,7 +765,7 @@ function EditorPage() {
           {tool === 'template' && (
             <div className="p-3 space-y-3">
               <h3 className="text-xs font-bold uppercase text-muted-foreground">Template base</h3>
-              <p className="text-[11px] text-muted-foreground">O template Canva já está carregado. Para substituir, importe outro PDF/PNG.</p>
+              <p className="text-[11px] text-muted-foreground">Já vem com a arte do Canva carregada. Importe outro PDF/PNG para substituir.</p>
               <label className="cursor-pointer block w-full border-2 border-dashed border-primary/40 rounded-lg p-4 text-center hover:bg-primary/5">
                 <FileText size={20} className="mx-auto mb-1 text-primary" />
                 <p className="text-xs font-semibold text-primary">Importar PDF do Canva</p>
