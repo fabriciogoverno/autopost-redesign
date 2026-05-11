@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Zap, FileText, Share2, ChartBar, Calendar, PieChart, TrendingUp } from 'lucide-react';
+import { Zap, FileText, Share2, BarChart3, Calendar, PieChart, TrendingUp } from 'lucide-react';
 
 export default function DashboardPage() {
   return (
@@ -36,7 +36,7 @@ export default function DashboardPage() {
         <ChartCard title="Por tipo de conteúdo" subtitle="Distribuição dos posts" icon={PieChart}>
           <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">Nenhum dado ainda</div>
         </ChartCard>
-        <ChartCard title="Créditos utilizados" subtitle="Consumo diário de créditos" icon={ChartBar}>
+        <ChartCard title="Créditos utilizados" subtitle="Consumo diário de créditos" icon={BarChart3}>
           <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">Nenhum dado ainda</div>
         </ChartCard>
       </div>
