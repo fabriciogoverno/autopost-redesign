@@ -1,22 +1,17 @@
 /**
- * Definição das camadas editáveis do template Ururau Reels (1080x1920).
+ * Definição das camadas editáveis do template Ururau Reels (1080×1920).
  *
- * Medidas extraídas do design original do usuário no Canva
- * (DAHJU-vIOgA - Cópia de Modelo da marca sem nome - Story do Instagram).
+ * Coordenadas EXATAS extraídas via Figma REST API:
+ *   GET https://api.figma.com/v1/files/42aGTHvkypbKFU8E0dUslt
  *
- * Logo group medido: X=607.9 Y=23.9 W=304 H=108.1 (Aileron Bold 67.9px)
- * Badge categoria: Aileron Bold 35.8px
+ * Original (Story do Instagram do usuário, criado no Canva) tinha frame
+ * 810×1440 pt. Aplicado scale 4/3 para chegar em canvas 1080×1920 px.
  *
  * Cada camada é editável independentemente no painel direito do editor.
  */
 
 export const CANVAS_W = 1080;
 export const CANVAS_H = 1920;
-
-// Posições absolutas do logo no Canvas (extraídas do Canva original)
-const LOGO_X = 608;
-const LOGO_Y = 24;
-const LOGO_W = 304;
 
 export const TEMPLATE_LAYERS = {
   // ===== MOLDURA opcional =====
@@ -25,7 +20,7 @@ export const TEMPLATE_LAYERS = {
     kind: 'rect-stroke',
     defaults: {
       x: 12, y: 12, width: 1056, height: 1896,
-      stroke: '#F5C518', strokeWidth: 8, fill: 'transparent',
+      stroke: '#FFDE59', strokeWidth: 8, fill: 'transparent',
       cornerRadius: 0, visible: false,
     },
   },
@@ -38,123 +33,133 @@ export const TEMPLATE_LAYERS = {
     locked: true,
   },
 
-  // ===== IMAGEM DA MATÉRIA (slot superior 65%) =====
+  // ===== IMAGEM DA MATÉRIA — slot superior (até onde começa o gradient) =====
   article_image: {
     label: 'Imagem da matéria',
     kind: 'image-slot',
-    defaults: { x: 0, y: 0, width: 1080, height: 1248 },
+    defaults: { x: 0, y: 0, width: 1080, height: 1100 },
   },
 
-  // ===== GRADIENT OVERLAY =====
+  // ===== GRADIENT OVERLAY — começa onde os rectangles do PDF começam =====
   gradient_overlay: {
     label: 'Gradiente (escurece base)',
     kind: 'gradient-rect',
     defaults: {
       x: 0, y: 0, width: 1080, height: 1920,
-      gradientStart: 0.45, gradientEnd: 0.68,
-      colorTop: 'rgba(10,10,10,0)', colorMid: 'rgba(10,10,10,0.6)', colorBottom: 'rgba(10,10,10,1)',
+      gradientStart: 0.43, gradientEnd: 0.62,
+      colorTop: 'rgba(10,10,10,0)', colorMid: 'rgba(10,10,10,0.7)', colorBottom: 'rgba(10,10,10,1)',
     },
     locked: true,
   },
 
-  // ===== LOGO URURAU =====
-  // Coordenadas relativas ao Canvas (logo posicionado top-right)
+  // ============================================================
+  // LOGO URURAU (canto superior direito)
+  // Coordenadas exatas extraídas do Figma
+  // ============================================================
   logo_ururau: {
     label: 'Logo · "ururau"',
     kind: 'text',
     defaults: {
-      x: LOGO_X, y: LOGO_Y, text: 'ururau', fontSize: 68,
-      fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
-      fill: '#FFFFFF', letterSpacing: -1,
+      x: 609, y: 23, text: 'ururau', fontSize: 85,
+      fontFamily: 'Aileron, Inter, Arial', fontStyle: '900',
+      fill: '#FFFFFF', width: 304, letterSpacing: -1,
     },
   },
   logo_line_left: {
     label: 'Logo · linha ouro ←',
     kind: 'rect',
-    defaults: { x: LOGO_X + 4, y: LOGO_Y + 82, width: 56, height: 4, fill: '#F5C518', cornerRadius: 2 },
+    defaults: { x: 604, y: 140, width: 78, height: 5, fill: '#FFDE59', cornerRadius: 2 },
   },
   logo_anos: {
     label: 'Logo · "19 ANOS"',
     kind: 'text',
     defaults: {
-      x: LOGO_X + 70, y: LOGO_Y + 76, text: '19 ANOS', fontSize: 18,
+      x: 689, y: 121, text: '19 ANOS', fontSize: 33,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
-      fill: '#F5C518', letterSpacing: 2,
+      fill: '#FFDE59', letterSpacing: 2,
     },
   },
   logo_line_right: {
     label: 'Logo · linha ouro →',
     kind: 'rect',
-    defaults: { x: LOGO_X + 170, y: LOGO_Y + 82, width: 56, height: 4, fill: '#F5C518', cornerRadius: 2 },
+    defaults: { x: 836, y: 140, width: 78, height: 5, fill: '#FFDE59', cornerRadius: 2 },
   },
   logo_circle: {
     label: 'Logo · círculo @',
     kind: 'circle',
-    defaults: { x: LOGO_X + LOGO_W - 50, y: LOGO_Y + 50, radius: 54, fill: '#E63946' },
+    defaults: { x: 984, y: 105, radius: 58, fill: '#E63946' },
   },
   logo_at: {
     label: 'Logo · símbolo @',
     kind: 'text',
     defaults: {
-      x: LOGO_X + LOGO_W - 96, y: LOGO_Y - 5, text: '@', fontSize: 92,
+      x: 935, y: 50, text: '@', fontSize: 95,
       fontFamily: 'Inter, Arial', fontStyle: 'bold',
-      fill: '#FFFFFF', width: 90, align: 'center',
+      fill: '#FFFFFF', width: 100, align: 'center',
     },
   },
 
-  // ===== BADGE CATEGORIA =====
-  // Posicionada no terço inferior, com altura = fontSize × ~2
+  // ============================================================
+  // BADGE CATEGORIA (rodapé esquerda)
+  // ============================================================
   category_bg: {
     label: 'Badge · fundo',
     kind: 'rect',
-    defaults: { x: 55, y: 1180, width: 220, height: 64, fill: '#E63946', cornerRadius: 2 },
+    defaults: { x: 65, y: 1176, width: 210, height: 76, fill: '#E63946', cornerRadius: 2 },
   },
   category_text: {
     label: 'Badge · texto',
     kind: 'text',
     defaults: {
-      x: 75, y: 1192, text: 'PRISÃO', fontSize: 36,
+      x: 84, y: 1185, text: 'PRISÃO', fontSize: 45,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
       fill: '#FFFFFF', letterSpacing: 0,
     },
   },
 
-  // ===== TÍTULO =====
-  // Fonte grande, bold, branco, multi-linha
+  // ============================================================
+  // TÍTULO (cinza claro, bold, grande)
+  // ============================================================
   title: {
     label: 'Título',
     kind: 'text',
     defaults: {
-      x: 55, y: 1280, text: 'Título da matéria aqui em até 4 linhas para boa legibilidade',
-      fontSize: 88, fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
-      fill: '#FFFFFF', width: 970, lineHeight: 1.05,
+      x: 68, y: 1265, text: 'Título da matéria aqui em até 4 linhas para boa legibilidade',
+      fontSize: 76, fontFamily: 'Aileron, Inter, Arial', fontStyle: '900',
+      fill: '#E4E4E4', width: 970, lineHeight: 1.10,
     },
   },
 
-  // ===== LINHA DECORATIVA VERMELHA =====
+  // ============================================================
+  // LINHA DECORATIVA VERMELHA (entre título e subtítulo)
+  // ============================================================
   separator: {
     label: 'Linha decorativa',
     kind: 'rect',
-    defaults: { x: 55, y: 1700, width: 180, height: 8, fill: '#C11F25', cornerRadius: 4 },
+    defaults: { x: 68, y: 1622, width: 282, height: 10, fill: '#C11F25', cornerRadius: 5 },
   },
 
-  // ===== SUBTÍTULO / RESUMO =====
+  // ============================================================
+  // SUBTÍTULO / RESUMO
+  // ============================================================
   summary: {
     label: 'Subtítulo / Resumo',
     kind: 'text',
     defaults: {
-      x: 55, y: 1730, text: 'Subtítulo com o resumo da matéria. Geralmente 2 a 3 linhas explicando o assunto principal.',
-      fontSize: 32, fontFamily: 'Aileron, Inter, Arial',
-      fill: '#D8D8D8', width: 970, lineHeight: 1.30,
+      x: 68, y: 1654, text: 'Subtítulo com o resumo da matéria. Geralmente 2 a 3 linhas explicando o assunto principal da notícia.',
+      fontSize: 40, fontFamily: 'Aileron, Inter, Arial',
+      fill: '#E4E4E4', width: 970, lineHeight: 1.25,
     },
   },
 
-  // ===== WATERMARK =====
+  // ============================================================
+  // WATERMARK
+  // ============================================================
   watermark: {
     label: 'Marca d\'água',
     kind: 'text',
     defaults: {
-      x: 55, y: 1875, text: 'URURAU.COM.BR', fontSize: 18,
+      x: 68, y: 1875, text: 'URURAU.COM.BR', fontSize: 22,
       fontFamily: 'Aileron, Inter, Arial', fontStyle: 'bold',
       fill: '#FFFFFF', opacity: 0.5, letterSpacing: 3,
     },
@@ -199,8 +204,6 @@ export const CATEGORY_COLORS = {
 
 /**
  * Exporta o estado atual de todas as camadas como JSON serializável.
- * Útil para salvar template completo (cores, posições, textos) em
- * localStorage ou backend.
  */
 export function exportTemplate(nodesRef) {
   const out = { version: 1, canvas: { width: CANVAS_W, height: CANVAS_H }, layers: {} };
@@ -235,9 +238,6 @@ export function exportTemplate(nodesRef) {
   return out;
 }
 
-/**
- * Aplica um JSON exportado de volta nas camadas (Konva nodes).
- */
 export function importTemplate(nodesRef, data) {
   if (!data?.layers) return;
   Object.entries(data.layers).forEach(([key, props]) => {
