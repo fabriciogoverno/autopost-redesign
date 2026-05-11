@@ -1,6 +1,6 @@
 {
   "name": "autopost-ururau-dashboard",
-  "version": "1.0.0",
+  "version": "3.6.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
@@ -15,7 +15,8 @@
     "recharts": "^2.12.0",
     "lucide-react": "^0.378.0",
     "clsx": "^2.1.0",
-    "tailwind-merge": "^2.3.0"
+    "tailwind-merge": "^2.3.0",
+    "cheerio": "^1.0.0-rc.12"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",

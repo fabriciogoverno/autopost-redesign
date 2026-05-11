@@ -4,7 +4,7 @@ import { Header } from '@/components/Header';
 
 export const metadata = {
   title: 'AutoPost Ururau — Transforme notícias em posts',
-  description: 'Painel de controle do sistema de automação de redes sociais — Ururau',
+  description: 'Painel de automação de redes sociais — Ururau',
 };
 
 export default function RootLayout({ children }) {
@@ -13,10 +13,8 @@ export default function RootLayout({ children }) {
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/aileron" />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
         <div className="flex h-screen overflow-hidden">
@@ -24,7 +22,7 @@ export default function RootLayout({ children }) {
           <div className="flex-1 flex flex-col overflow-hidden">
             <Header />
             <main className="flex-1 overflow-y-auto bg-muted/30">
-              <div className="max-w-7xl mx-auto p-6 lg:p-8">
+              <div className="max-w-[1600px] mx-auto p-4 lg:p-6">
                 {children}
               </div>
             </main>
