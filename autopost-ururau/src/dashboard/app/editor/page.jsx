@@ -9,7 +9,7 @@ import {
   Loader2, Lock, Unlock, EyeOff, AlertCircle, Globe, Send, FileText,
 } from 'lucide-react';
 import { proxiedUrl, loadVisualIdentity } from '@/lib/imgProxy';
-import { TEMPLATE_LAYERS, LAYER_ORDER, LAYER_GROUPS, CATEGORY_COLORS, exportTemplate, importTemplate } from '@/lib/templateLayers';
+import { TEMPLATE_LAYERS, LAYER_ORDER, LAYER_GROUPS, CATEGORY_COLORS, URURAU_RED, exportTemplate, importTemplate } from '@/lib/templateLayers';
 import { CANVA_BASE_IMAGE } from '@/lib/canvaBaseImage';
 
 const TEMPLATES_KEY = 'ururau-my-templates-v1';
@@ -82,15 +82,12 @@ function EditorPage() {
     if (typeof window === 'undefined' || !('fonts' in document)) { setFontReady(true); return; }
     const safety = setTimeout(() => setFontReady(true), 4000);
     Promise.all([
-      document.fonts.load('900 89px "Aileron"'),
-      document.fonts.load('900 85px "Aileron"'),
       document.fonts.load('bold 56px "Aileron"'),
-      document.fonts.load('bold 42px "Aileron"'),
+      document.fonts.load('bold 85px "Aileron"'),
       document.fonts.load('400 43px "Aileron"'),
     ]).finally(() => { clearTimeout(safety); setFontReady(true); });
   }, []);
 
-  // ---- Carregar template salvo se chegou pelo /editor?id=mine_xxx ----
   useEffect(() => {
     if (!konvaReady || !templateId || !templateId.startsWith('mine_')) return;
     try {
@@ -98,11 +95,8 @@ function EditorPage() {
       const found = all.find((t) => t.id === templateId);
       if (found) {
         setTemplateName(found.name || 'Meu Template');
-        if (found.baseImage) {
-          baseDataURLRef.current = found.baseImage;
-        }
+        if (found.baseImage) baseDataURLRef.current = found.baseImage;
         if (found.state && nodesRef.current) {
-          // Aplica state depois que as camadas existirem
           setTimeout(() => importTemplate(nodesRef.current, found.state), 500);
         }
       }
@@ -122,21 +116,25 @@ function EditorPage() {
     buildAllLayers();
     applyBase(baseDataURLRef.current);
     restoreZOrder();
-    // Transformer reutilizável para a imagem da matéria
+
+    // Transformer estilo Canva
     const tr = new Konva.Transformer({
       enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center'],
-      borderStroke: '#2563EB', borderStrokeWidth: 2, borderDash: [8, 4],
-      anchorStroke: '#2563EB', anchorFill: '#FFFFFF', anchorStrokeWidth: 2, anchorSize: 14,
+      borderStroke: '#2563EB', borderStrokeWidth: 2, borderDash: [6, 4],
+      anchorStroke: '#2563EB', anchorFill: '#FFFFFF', anchorStrokeWidth: 2, anchorSize: 12,
       keepRatio: false, rotateEnabled: false,
     });
     layer.add(tr);
     transformerRef.current = tr;
+
     stage.on('click tap', (e) => {
       if (e.target === stage) { deselect(); tr.nodes([]); layer.draw(); return; }
-      // Se clicou na imagem da matéria, ativa o transformer
-      if (e.target.name() === 'article-image-actual') {
+      const name = e.target.name();
+      if (name === 'article-image-actual') {
         tr.nodes([e.target]); layer.draw();
-      } else if (!e.target.hasName('selection-indicator')) {
+        return;
+      }
+      if (!e.target.hasName('selection-indicator')) {
         tr.nodes([]); layer.draw();
       }
     });
@@ -206,7 +204,9 @@ function EditorPage() {
     for (const key of LAYER_ORDER) {
       const n = nodesRef.current[key];
       if (n) n.zIndex(z++);
+      // Foto da matéria entra no z do slot
       if (key === 'article_image' && realArticle) realArticle.zIndex(z++);
+      // Base PNG (logo) vai DEPOIS do gradient_overlay
       if (key === 'gradient_overlay' && baseTemplate) baseTemplate.zIndex(z++);
     }
     if (tr) tr.moveToTop();
@@ -237,6 +237,7 @@ function EditorPage() {
           fillLinearGradientStartPoint: { x: 0, y: d.height * d.gradientStart },
           fillLinearGradientEndPoint: { x: 0, y: d.height * d.gradientEnd },
           fillLinearGradientColorStops: [0, d.colorTop, 0.4, d.colorMid, 1, d.colorBottom],
+          listening: false,
         });
       default:
         return null;
@@ -284,17 +285,14 @@ function EditorPage() {
       name: 'selection-indicator', listening: false,
     });
     layerRef.current.add(r); r.moveToTop();
+    transformerRef.current?.moveToTop();
     layerRef.current.draw();
   }
 
-  // ====================================================
-  // CENTRALIZA O TEXTO DENTRO DO BADGE SEMPRE
-  // ====================================================
   function centerBadge() {
     const txt = nodesRef.current.category_text;
     const bg = nodesRef.current.category_bg;
     if (!txt || !bg) return;
-    // Mede a largura real do texto renderizado
     const textW = txt.getTextWidth ? txt.getTextWidth() : (txt.text().length * (txt.fontSize() * 0.55));
     const padX = 28;
     const padY = 12;
@@ -303,7 +301,6 @@ function EditorPage() {
     const newH = fs + padY * 2;
     bg.width(newW);
     bg.height(newH);
-    // Centra texto dentro do retângulo
     txt.x(bg.x() + (newW - textW) / 2);
     txt.y(bg.y() + (newH - fs) / 2 - 2);
     layerRef.current?.draw();
@@ -434,7 +431,8 @@ function EditorPage() {
   }
 
   // ====================================================
-  // IMAGEM DA MATÉRIA: cover-fit + drag + transformer
+  // FOTO DA MATÉRIA: cover-fit 1080x1920 (cobre todo o stage)
+  // Transformer ativa quando clicar na foto
   // ====================================================
   function setArticleImageURL(src) {
     const img = new window.Image();
@@ -448,35 +446,31 @@ function EditorPage() {
       const old = layer.findOne('.article-image-actual');
       if (old) old.destroy();
 
-      // COVER FIT: escala a imagem para cobrir todo o slot mantendo proporção
-      const slotW = slot.width();
-      const slotH = slot.height();
+      // COVER FIT em 1080x1920 inteiro
+      const slotW = 1080;
+      const slotH = 1920;
       const ratioImg = img.width / img.height;
       const ratioSlot = slotW / slotH;
       let drawW, drawH, offX, offY;
       if (ratioImg > ratioSlot) {
-        // imagem mais larga: ajusta altura, centra horizontal
         drawH = slotH;
         drawW = slotH * ratioImg;
-        offX = slot.x() - (drawW - slotW) / 2;
-        offY = slot.y();
+        offX = -(drawW - slotW) / 2;
+        offY = 0;
       } else {
-        // imagem mais alta: ajusta largura, centra vertical
         drawW = slotW;
         drawH = slotW / ratioImg;
-        offX = slot.x();
-        offY = slot.y() - (drawH - slotH) / 2;
+        offX = 0;
+        offY = -(drawH - slotH) / 2;
       }
       const imgNode = new Konva.Image({
         x: offX, y: offY, width: drawW, height: drawH,
         image: img, name: 'article-image-actual',
         draggable: true, listening: true,
       });
-      // Clipa a imagem ao slot ao desenhar (não vaza pelas bordas no PNG final)
-      imgNode.dragBoundFunc(function(pos) { return pos; }); // permite arrastar livre
       layer.add(imgNode);
       restoreZOrder();
-      showToast('Imagem inserida — clique nela para redimensionar');
+      showToast('Foto inserida — clique pra redimensionar com as 8 alças');
     };
     img.onerror = () => showError('Falha ao carregar imagem. Tente upload manual.');
     img.src = proxiedUrl(src);
@@ -496,7 +490,6 @@ function EditorPage() {
         console.error('Extract response:', res.status, d);
         throw new Error(d.error || `HTTP ${res.status} ao extrair matéria`);
       }
-      console.log('Extract success:', d);
 
       if (nodesRef.current.title && d.title) nodesRef.current.title.text(d.title);
       if (nodesRef.current.summary && d.summary) nodesRef.current.summary.text(d.summary);
@@ -504,7 +497,7 @@ function EditorPage() {
         const t = d.category.toUpperCase();
         nodesRef.current.category_text.text(t);
         const bg = nodesRef.current.category_bg;
-        if (bg && CATEGORY_COLORS[t]) bg.fill(CATEGORY_COLORS[t]);
+        if (bg) bg.fill(CATEGORY_COLORS[t] || URURAU_RED);
         centerBadge();
       }
       if (d.image) setArticleImageURL(d.image);
@@ -516,14 +509,9 @@ function EditorPage() {
     } finally { setExtracting(false); }
   }
 
-  // ====================================================
-  // SALVAR: persiste template completo (state + base + thumbnail)
-  // na biblioteca Meus Templates
-  // ====================================================
   function handleSave() {
     if (!stageRef.current) return;
     const state = exportTemplate(nodesRef.current);
-    // Snapshot PNG para usar como thumbnail
     const tr = transformerRef.current;
     if (tr) tr.nodes([]);
     layerRef.current?.find('.selection-indicator').forEach((i) => i.visible(false));
@@ -542,7 +530,7 @@ function EditorPage() {
     const isEdit = templateId && templateId.startsWith('mine_');
     const id = isEdit ? templateId : `mine_${Date.now()}`;
     const entry = {
-      id, name: templateName, accent: nodesRef.current.category_bg?.fill() || '#E63946',
+      id, name: templateName, accent: nodesRef.current.category_bg?.fill() || URURAU_RED,
       category: 'noticia', preview: 'custom', sourceId: 'editor',
       createdAt: new Date().toISOString(),
       state, baseImage: baseDataURLRef.current, thumb,
@@ -598,7 +586,7 @@ function EditorPage() {
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width; canvas.height = viewport.height;
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-        applyBase(canvas.toDataURL('image/jpeg', 0.88));
+        applyBase(canvas.toDataURL('image/png'));
       } catch (err) { showError('Erro PDF: ' + err.message); }
     } else {
       const r = new FileReader();
@@ -656,7 +644,7 @@ function EditorPage() {
             Extrair
           </button>
         </div>
-        <button onClick={undo} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Desfazer"><Undo2 size={15} /></button>
+        <button onClick={undo} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Desfazer (Ctrl+Z)"><Undo2 size={15} /></button>
         <div className="w-px h-6 bg-border" />
         <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90">
           <Save size={11} /> Salvar
@@ -677,7 +665,7 @@ function EditorPage() {
           {[
             { id: 'camadas',  label: 'Camadas',  icon: LayersIcon },
             { id: 'imagens',  label: 'Imagens',  icon: ImgIcon },
-            { id: 'template', label: 'Template', icon: FileText },
+            { id: 'template', label: 'Base',     icon: FileText },
             { id: 'uploads',  label: 'Uploads',  icon: Upload },
           ].map((t) => {
             const Icon = t.icon;
@@ -746,8 +734,8 @@ function EditorPage() {
 
           {tool === 'imagens' && (
             <div className="p-3 space-y-3">
-              <h3 className="text-xs font-bold uppercase text-muted-foreground">Imagem da matéria</h3>
-              <p className="text-[10px] text-muted-foreground">Após inserir, clique na imagem para arrastar e redimensionar com 8 alças.</p>
+              <h3 className="text-xs font-bold uppercase text-muted-foreground">Foto da matéria</h3>
+              <p className="text-[10px] text-muted-foreground">Após inserir, clique na foto para arrastar e redimensionar com 8 alças (estilo Canva).</p>
               <label className="cursor-pointer block w-full border-2 border-dashed border-border rounded-lg p-5 text-center hover:bg-muted/30">
                 <ImgIcon size={20} className="mx-auto mb-2 text-muted-foreground" />
                 <p className="text-xs font-semibold">Enviar do PC</p>
@@ -764,16 +752,16 @@ function EditorPage() {
 
           {tool === 'template' && (
             <div className="p-3 space-y-3">
-              <h3 className="text-xs font-bold uppercase text-muted-foreground">Template base</h3>
-              <p className="text-[11px] text-muted-foreground">Já vem com a arte do Canva carregada. Importe outro PDF/PNG para substituir.</p>
+              <h3 className="text-xs font-bold uppercase text-muted-foreground">Logo Ururau (base)</h3>
+              <p className="text-[11px] text-muted-foreground">Já vem com o logo do Canva carregado como PNG transparente sobreposto à foto.</p>
               <label className="cursor-pointer block w-full border-2 border-dashed border-primary/40 rounded-lg p-4 text-center hover:bg-primary/5">
                 <FileText size={20} className="mx-auto mb-1 text-primary" />
-                <p className="text-xs font-semibold text-primary">Importar PDF do Canva</p>
+                <p className="text-xs font-semibold text-primary">Substituir por outro PDF/PNG</p>
                 <input type="file" accept=".pdf,image/png,image/jpeg" className="hidden"
                   onChange={(e) => e.target.files[0] && uploadBaseTemplate(e.target.files[0])} />
               </label>
               <button onClick={() => applyBase(CANVA_BASE_IMAGE)} className="w-full py-2 rounded-lg bg-muted text-xs font-medium hover:bg-muted/80">
-                Resetar para template original
+                Resetar pro logo original
               </button>
             </div>
           )}
@@ -798,7 +786,7 @@ function EditorPage() {
             </div>
           )}
           <div id="konva-stage" className="mx-auto rounded-md shadow-2xl"
-            style={{ width: 1080 * scale, height: 1920 * scale, background: '#0a0a0a' }} />
+            style={{ width: 1080 * scale, height: 1920 * scale, background: '#000' }} />
         </div>
 
         <div className="w-80 bg-card border-l border-border overflow-y-auto">
@@ -842,12 +830,6 @@ function EditorPage() {
                   </Section>
                 )}
 
-                {nodeType === 'Circle' && (
-                  <Section title="Raio">
-                    <NumInput value={Math.round(node.radius())} onChange={(v) => updateProp('radius', v)} />
-                  </Section>
-                )}
-
                 {nodeType === 'Text' && (
                   <>
                     <Section title="Texto">
@@ -863,7 +845,7 @@ function EditorPage() {
                           className="w-full h-8 rounded p-1 cursor-pointer" />
                       </Section>
                     </div>
-                    <Section title={`Espaçamento entre letras (${node.letterSpacing() || 0})`}>
+                    <Section title={`Espaçamento (${node.letterSpacing() || 0})`}>
                       <input type="range" min="-5" max="20" step="0.5" value={node.letterSpacing() || 0}
                         onChange={(e) => updateProp('letterSpacing', e.target.value)} className="w-full accent-primary" />
                     </Section>
